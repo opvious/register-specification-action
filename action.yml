@@ -1,0 +1,19 @@
+name: Register specification
+description: Register a new optimization model
+inputs:
+  authorization:
+    description: Opvious API authorization
+    required: true
+  sources:
+    description: Glob of specification sources
+    required: true
+  dry-run:
+    description: |
+      When true, specifications will only be validated and not registered
+  api-endpoint:
+    description: Opvious API endpoint
+  hub-endpoint:
+    description: Opvious optimization hub endpoint
+runs:
+  using: node16
+  main: dist/index.js

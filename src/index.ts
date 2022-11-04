@@ -31,8 +31,6 @@ async function main(): Promise<void> {
         description: src,
       });
       console.log(`Registered ${srcPath}. [revno=${spec.revno}]`);
-      core.setOutput(name + '-revno', spec.revno);
-      core.setOutput(name + '-url', client.specificationUrl(name, spec.revno));
     }
   }
 }
