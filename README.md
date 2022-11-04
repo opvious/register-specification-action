@@ -14,6 +14,10 @@ controlled sources.
 **Required** Glob of source paths. The name of the formulation will be assumed
 equal to the name of the source file (after stripping any extension).
 
+### `tags`
+
+Comma-separated list of tags to apply to the created specification.
+
 ### `dry-run`
 
 If true, the specifications will only be validated and not registered.

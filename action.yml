@@ -10,6 +10,9 @@ inputs:
   dry-run:
     description: |
       When true, specifications will only be validated and not registered
+    default: false
+  tags:
+    description: Comma-separated list of tag names
   api-endpoint:
     description: Opvious API endpoint
   hub-endpoint:

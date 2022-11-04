@@ -18960,6 +18960,7 @@ async function main() {
         hubEndpoint: core.getInput('hub-endpoint') || undefined,
     });
     const dryRun = core.getBooleanInput('dry-run');
+    const tags = commaSeparated(core.getInput('tags'));
     const srcGlob = core.getInput('sources', { required: true });
     const globber = await glob.create(srcGlob);
     for await (const srcPath of globber.globGenerator()) {
@@ -18976,10 +18977,14 @@ async function main() {
                 formulationName: name,
                 definitions: defs,
                 description: src,
+                tagNames: tags,
             });
             console.log(`Registered ${srcPath}. [revno=${spec.revno}]`);
         }
     }
+}
+function commaSeparated(arg) {
+    return arg.split(',').map(e => e.trim()).filter(e => e);
 }
 if (require.cache[eval('__filename')] == require.main) {
     main().catch((err) => {

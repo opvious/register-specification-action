@@ -12,6 +12,7 @@ async function main(): Promise<void> {
     hubEndpoint: core.getInput('hub-endpoint') || undefined,
   });
   const dryRun = core.getBooleanInput('dry-run');
+  const tags = commaSeparated(core.getInput('tags'));
 
   const srcGlob = core.getInput('sources', {required: true});
   const globber = await glob.create(srcGlob);
@@ -29,10 +30,15 @@ async function main(): Promise<void> {
         formulationName: name,
         definitions: defs,
         description: src,
+        tagNames: tags,
       });
       console.log(`Registered ${srcPath}. [revno=${spec.revno}]`);
     }
   }
+}
+
+function commaSeparated(arg: string): ReadonlyArray<string> {
+  return arg.split(',').map(e => e.trim()).filter(e => e);
 }
 
 if (module == require.main) {
