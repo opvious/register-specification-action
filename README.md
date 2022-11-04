@@ -1,0 +1,1 @@
+# Register specification GitHub action
