@@ -40,7 +40,7 @@ self-hosted Opvious cluster. Defaults to https://hub.opvious.io.
 ## Example usage
 
 ```yaml
-uses: opvious/register-specification-action@main
+uses: opvious/register-specification-action@v0.1.1
 with:
   token: ${{ secrets.OPVIOUS_TOKEN }}
   sources: sources/*.md
