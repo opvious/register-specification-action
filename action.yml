@@ -1,8 +1,8 @@
 name: Register specification
 description: Register a new optimization model
 inputs:
-  authorization:
-    description: Opvious API authorization
+  token:
+    description: Opvious API access token
     required: true
   sources:
     description: Glob of specification sources

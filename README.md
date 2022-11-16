@@ -5,7 +5,7 @@ controlled sources.
 
 ## Inputs
 
-### `authorization`
+### `token`
 
 **Required** Opvious API access token. You can create one here:
 https://hub.opvious.io/authorizations.
@@ -38,6 +38,6 @@ Optimization hub endpoint. Defaults to https://hub.opvious.io.
 ```yaml
 uses: opvious/register-specification-action@main
 with:
-  authorization: ${{ secrets.OPVIOUS_TOKEN }}
+  token: ${{ secrets.OPVIOUS_TOKEN }}
   sources: sources/*.md
 ```

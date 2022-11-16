@@ -7,7 +7,7 @@ import {OpviousClient} from 'opvious';
 
 async function main(): Promise<void> {
   const client = OpviousClient.create({
-    authorization: core.getInput('authorization', {required: true}),
+    authorization: core.getInput('token', {required: true}),
     apiEndpoint: core.getInput('api-endpoint') || undefined,
     hubEndpoint: core.getInput('hub-endpoint') || undefined,
   });
