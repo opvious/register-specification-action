@@ -19,19 +19,23 @@ would be registed as `shift-scheduling`.
 ### `tags`
 
 Comma-separated list of tags to apply to the created specification. By default
-only the `latest` tag is applied.
+only the `latest` tag is applied. This can be useful to add a `ci` tag or
+version-specific tags for easier tracking.
 
 ### `dry-run`
 
-If true, the specifications will only be validated and not registered.
+If true, specifications will only be validated (and not registered). Defaults to
+false.
 
 ### `api-endpoint`
 
-Opvious API endpoint. Defaults to https://api.opvious.io.
+Opvious API endpoint. You should only need to set this if you are running a
+self-hosted Opvious cluster. Defaults to https://api.opvious.io.
 
 ### `hub-endpoint`
 
-Optimization hub endpoint. Defaults to https://hub.opvious.io.
+Optimization hub endpoint. You should only need to set this if you are running a
+self-hosted Opvious cluster. Defaults to https://hub.opvious.io.
 
 ## Example usage
 
