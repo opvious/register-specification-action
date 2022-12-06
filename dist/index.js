@@ -2950,6 +2950,5471 @@ exports.checkBypass = checkBypass;
 
 /***/ }),
 
+/***/ 7171:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.ContextAPI = void 0;
+const NoopContextManager_1 = __nccwpck_require__(4118);
+const global_utils_1 = __nccwpck_require__(5135);
+const diag_1 = __nccwpck_require__(1877);
+const API_NAME = 'context';
+const NOOP_CONTEXT_MANAGER = new NoopContextManager_1.NoopContextManager();
+/**
+ * Singleton object which represents the entry point to the OpenTelemetry Context API
+ */
+class ContextAPI {
+    /** Empty private constructor prevents end users from constructing a new instance of the API */
+    constructor() { }
+    /** Get the singleton instance of the Context API */
+    static getInstance() {
+        if (!this._instance) {
+            this._instance = new ContextAPI();
+        }
+        return this._instance;
+    }
+    /**
+     * Set the current context manager.
+     *
+     * @returns true if the context manager was successfully registered, else false
+     */
+    setGlobalContextManager(contextManager) {
+        return (0, global_utils_1.registerGlobal)(API_NAME, contextManager, diag_1.DiagAPI.instance());
+    }
+    /**
+     * Get the currently active context
+     */
+    active() {
+        return this._getContextManager().active();
+    }
+    /**
+     * Execute a function with an active context
+     *
+     * @param context context to be active during function execution
+     * @param fn function to execute in a context
+     * @param thisArg optional receiver to be used for calling fn
+     * @param args optional arguments forwarded to fn
+     */
+    with(context, fn, thisArg, ...args) {
+        return this._getContextManager().with(context, fn, thisArg, ...args);
+    }
+    /**
+     * Bind a context to a target function or event emitter
+     *
+     * @param context context to bind to the event emitter or function. Defaults to the currently active context
+     * @param target function or event emitter to bind
+     */
+    bind(context, target) {
+        return this._getContextManager().bind(context, target);
+    }
+    _getContextManager() {
+        return (0, global_utils_1.getGlobal)(API_NAME) || NOOP_CONTEXT_MANAGER;
+    }
+    /** Disable and remove the global context manager */
+    disable() {
+        this._getContextManager().disable();
+        (0, global_utils_1.unregisterGlobal)(API_NAME, diag_1.DiagAPI.instance());
+    }
+}
+exports.ContextAPI = ContextAPI;
+//# sourceMappingURL=context.js.map
+
+/***/ }),
+
+/***/ 1877:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.DiagAPI = void 0;
+const ComponentLogger_1 = __nccwpck_require__(7978);
+const logLevelLogger_1 = __nccwpck_require__(9639);
+const types_1 = __nccwpck_require__(8077);
+const global_utils_1 = __nccwpck_require__(5135);
+const API_NAME = 'diag';
+/**
+ * Singleton object which represents the entry point to the OpenTelemetry internal
+ * diagnostic API
+ */
+class DiagAPI {
+    /**
+     * Private internal constructor
+     * @private
+     */
+    constructor() {
+        function _logProxy(funcName) {
+            return function (...args) {
+                const logger = (0, global_utils_1.getGlobal)('diag');
+                // shortcut if logger not set
+                if (!logger)
+                    return;
+                return logger[funcName](...args);
+            };
+        }
+        // Using self local variable for minification purposes as 'this' cannot be minified
+        const self = this;
+        // DiagAPI specific functions
+        const setLogger = (logger, optionsOrLogLevel = { logLevel: types_1.DiagLogLevel.INFO }) => {
+            var _a, _b, _c;
+            if (logger === self) {
+                // There isn't much we can do here.
+                // Logging to the console might break the user application.
+                // Try to log to self. If a logger was previously registered it will receive the log.
+                const err = new Error('Cannot use diag as the logger for itself. Please use a DiagLogger implementation like ConsoleDiagLogger or a custom implementation');
+                self.error((_a = err.stack) !== null && _a !== void 0 ? _a : err.message);
+                return false;
+            }
+            if (typeof optionsOrLogLevel === 'number') {
+                optionsOrLogLevel = {
+                    logLevel: optionsOrLogLevel,
+                };
+            }
+            const oldLogger = (0, global_utils_1.getGlobal)('diag');
+            const newLogger = (0, logLevelLogger_1.createLogLevelDiagLogger)((_b = optionsOrLogLevel.logLevel) !== null && _b !== void 0 ? _b : types_1.DiagLogLevel.INFO, logger);
+            // There already is an logger registered. We'll let it know before overwriting it.
+            if (oldLogger && !optionsOrLogLevel.suppressOverrideMessage) {
+                const stack = (_c = new Error().stack) !== null && _c !== void 0 ? _c : '<failed to generate stacktrace>';
+                oldLogger.warn(`Current logger will be overwritten from ${stack}`);
+                newLogger.warn(`Current logger will overwrite one already registered from ${stack}`);
+            }
+            return (0, global_utils_1.registerGlobal)('diag', newLogger, self, true);
+        };
+        self.setLogger = setLogger;
+        self.disable = () => {
+            (0, global_utils_1.unregisterGlobal)(API_NAME, self);
+        };
+        self.createComponentLogger = (options) => {
+            return new ComponentLogger_1.DiagComponentLogger(options);
+        };
+        self.verbose = _logProxy('verbose');
+        self.debug = _logProxy('debug');
+        self.info = _logProxy('info');
+        self.warn = _logProxy('warn');
+        self.error = _logProxy('error');
+    }
+    /** Get the singleton instance of the DiagAPI API */
+    static instance() {
+        if (!this._instance) {
+            this._instance = new DiagAPI();
+        }
+        return this._instance;
+    }
+}
+exports.DiagAPI = DiagAPI;
+//# sourceMappingURL=diag.js.map
+
+/***/ }),
+
+/***/ 7696:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.MetricsAPI = void 0;
+const NoopMeterProvider_1 = __nccwpck_require__(2647);
+const global_utils_1 = __nccwpck_require__(5135);
+const diag_1 = __nccwpck_require__(1877);
+const API_NAME = 'metrics';
+/**
+ * Singleton object which represents the entry point to the OpenTelemetry Metrics API
+ */
+class MetricsAPI {
+    /** Empty private constructor prevents end users from constructing a new instance of the API */
+    constructor() { }
+    /** Get the singleton instance of the Metrics API */
+    static getInstance() {
+        if (!this._instance) {
+            this._instance = new MetricsAPI();
+        }
+        return this._instance;
+    }
+    /**
+     * Set the current global meter provider.
+     * Returns true if the meter provider was successfully registered, else false.
+     */
+    setGlobalMeterProvider(provider) {
+        return (0, global_utils_1.registerGlobal)(API_NAME, provider, diag_1.DiagAPI.instance());
+    }
+    /**
+     * Returns the global meter provider.
+     */
+    getMeterProvider() {
+        return (0, global_utils_1.getGlobal)(API_NAME) || NoopMeterProvider_1.NOOP_METER_PROVIDER;
+    }
+    /**
+     * Returns a meter from the global meter provider.
+     */
+    getMeter(name, version, options) {
+        return this.getMeterProvider().getMeter(name, version, options);
+    }
+    /** Remove the global meter provider */
+    disable() {
+        (0, global_utils_1.unregisterGlobal)(API_NAME, diag_1.DiagAPI.instance());
+    }
+}
+exports.MetricsAPI = MetricsAPI;
+//# sourceMappingURL=metrics.js.map
+
+/***/ }),
+
+/***/ 9909:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.PropagationAPI = void 0;
+const global_utils_1 = __nccwpck_require__(5135);
+const NoopTextMapPropagator_1 = __nccwpck_require__(2368);
+const TextMapPropagator_1 = __nccwpck_require__(865);
+const context_helpers_1 = __nccwpck_require__(7682);
+const utils_1 = __nccwpck_require__(8136);
+const diag_1 = __nccwpck_require__(1877);
+const API_NAME = 'propagation';
+const NOOP_TEXT_MAP_PROPAGATOR = new NoopTextMapPropagator_1.NoopTextMapPropagator();
+/**
+ * Singleton object which represents the entry point to the OpenTelemetry Propagation API
+ */
+class PropagationAPI {
+    /** Empty private constructor prevents end users from constructing a new instance of the API */
+    constructor() {
+        this.createBaggage = utils_1.createBaggage;
+        this.getBaggage = context_helpers_1.getBaggage;
+        this.setBaggage = context_helpers_1.setBaggage;
+        this.deleteBaggage = context_helpers_1.deleteBaggage;
+    }
+    /** Get the singleton instance of the Propagator API */
+    static getInstance() {
+        if (!this._instance) {
+            this._instance = new PropagationAPI();
+        }
+        return this._instance;
+    }
+    /**
+     * Set the current propagator.
+     *
+     * @returns true if the propagator was successfully registered, else false
+     */
+    setGlobalPropagator(propagator) {
+        return (0, global_utils_1.registerGlobal)(API_NAME, propagator, diag_1.DiagAPI.instance());
+    }
+    /**
+     * Inject context into a carrier to be propagated inter-process
+     *
+     * @param context Context carrying tracing data to inject
+     * @param carrier carrier to inject context into
+     * @param setter Function used to set values on the carrier
+     */
+    inject(context, carrier, setter = TextMapPropagator_1.defaultTextMapSetter) {
+        return this._getGlobalPropagator().inject(context, carrier, setter);
+    }
+    /**
+     * Extract context from a carrier
+     *
+     * @param context Context which the newly created context will inherit from
+     * @param carrier Carrier to extract context from
+     * @param getter Function used to extract keys from a carrier
+     */
+    extract(context, carrier, getter = TextMapPropagator_1.defaultTextMapGetter) {
+        return this._getGlobalPropagator().extract(context, carrier, getter);
+    }
+    /**
+     * Return a list of all fields which may be used by the propagator.
+     */
+    fields() {
+        return this._getGlobalPropagator().fields();
+    }
+    /** Remove the global propagator */
+    disable() {
+        (0, global_utils_1.unregisterGlobal)(API_NAME, diag_1.DiagAPI.instance());
+    }
+    _getGlobalPropagator() {
+        return (0, global_utils_1.getGlobal)(API_NAME) || NOOP_TEXT_MAP_PROPAGATOR;
+    }
+}
+exports.PropagationAPI = PropagationAPI;
+//# sourceMappingURL=propagation.js.map
+
+/***/ }),
+
+/***/ 1539:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.TraceAPI = void 0;
+const global_utils_1 = __nccwpck_require__(5135);
+const ProxyTracerProvider_1 = __nccwpck_require__(2285);
+const spancontext_utils_1 = __nccwpck_require__(9745);
+const context_utils_1 = __nccwpck_require__(3326);
+const diag_1 = __nccwpck_require__(1877);
+const API_NAME = 'trace';
+/**
+ * Singleton object which represents the entry point to the OpenTelemetry Tracing API
+ */
+class TraceAPI {
+    /** Empty private constructor prevents end users from constructing a new instance of the API */
+    constructor() {
+        this._proxyTracerProvider = new ProxyTracerProvider_1.ProxyTracerProvider();
+        this.wrapSpanContext = spancontext_utils_1.wrapSpanContext;
+        this.isSpanContextValid = spancontext_utils_1.isSpanContextValid;
+        this.deleteSpan = context_utils_1.deleteSpan;
+        this.getSpan = context_utils_1.getSpan;
+        this.getActiveSpan = context_utils_1.getActiveSpan;
+        this.getSpanContext = context_utils_1.getSpanContext;
+        this.setSpan = context_utils_1.setSpan;
+        this.setSpanContext = context_utils_1.setSpanContext;
+    }
+    /** Get the singleton instance of the Trace API */
+    static getInstance() {
+        if (!this._instance) {
+            this._instance = new TraceAPI();
+        }
+        return this._instance;
+    }
+    /**
+     * Set the current global tracer.
+     *
+     * @returns true if the tracer provider was successfully registered, else false
+     */
+    setGlobalTracerProvider(provider) {
+        const success = (0, global_utils_1.registerGlobal)(API_NAME, this._proxyTracerProvider, diag_1.DiagAPI.instance());
+        if (success) {
+            this._proxyTracerProvider.setDelegate(provider);
+        }
+        return success;
+    }
+    /**
+     * Returns the global tracer provider.
+     */
+    getTracerProvider() {
+        return (0, global_utils_1.getGlobal)(API_NAME) || this._proxyTracerProvider;
+    }
+    /**
+     * Returns a tracer from the global tracer provider.
+     */
+    getTracer(name, version) {
+        return this.getTracerProvider().getTracer(name, version);
+    }
+    /** Remove the global tracer provider */
+    disable() {
+        (0, global_utils_1.unregisterGlobal)(API_NAME, diag_1.DiagAPI.instance());
+        this._proxyTracerProvider = new ProxyTracerProvider_1.ProxyTracerProvider();
+    }
+}
+exports.TraceAPI = TraceAPI;
+//# sourceMappingURL=trace.js.map
+
+/***/ }),
+
+/***/ 7682:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.deleteBaggage = exports.setBaggage = exports.getBaggage = void 0;
+const context_1 = __nccwpck_require__(8242);
+/**
+ * Baggage key
+ */
+const BAGGAGE_KEY = (0, context_1.createContextKey)('OpenTelemetry Baggage Key');
+/**
+ * Retrieve the current baggage from the given context
+ *
+ * @param {Context} Context that manage all context values
+ * @returns {Baggage} Extracted baggage from the context
+ */
+function getBaggage(context) {
+    return context.getValue(BAGGAGE_KEY) || undefined;
+}
+exports.getBaggage = getBaggage;
+/**
+ * Store a baggage in the given context
+ *
+ * @param {Context} Context that manage all context values
+ * @param {Baggage} baggage that will be set in the actual context
+ */
+function setBaggage(context, baggage) {
+    return context.setValue(BAGGAGE_KEY, baggage);
+}
+exports.setBaggage = setBaggage;
+/**
+ * Delete the baggage stored in the given context
+ *
+ * @param {Context} Context that manage all context values
+ */
+function deleteBaggage(context) {
+    return context.deleteValue(BAGGAGE_KEY);
+}
+exports.deleteBaggage = deleteBaggage;
+//# sourceMappingURL=context-helpers.js.map
+
+/***/ }),
+
+/***/ 4811:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.BaggageImpl = void 0;
+class BaggageImpl {
+    constructor(entries) {
+        this._entries = entries ? new Map(entries) : new Map();
+    }
+    getEntry(key) {
+        const entry = this._entries.get(key);
+        if (!entry) {
+            return undefined;
+        }
+        return Object.assign({}, entry);
+    }
+    getAllEntries() {
+        return Array.from(this._entries.entries()).map(([k, v]) => [k, v]);
+    }
+    setEntry(key, entry) {
+        const newBaggage = new BaggageImpl(this._entries);
+        newBaggage._entries.set(key, entry);
+        return newBaggage;
+    }
+    removeEntry(key) {
+        const newBaggage = new BaggageImpl(this._entries);
+        newBaggage._entries.delete(key);
+        return newBaggage;
+    }
+    removeEntries(...keys) {
+        const newBaggage = new BaggageImpl(this._entries);
+        for (const key of keys) {
+            newBaggage._entries.delete(key);
+        }
+        return newBaggage;
+    }
+    clear() {
+        return new BaggageImpl();
+    }
+}
+exports.BaggageImpl = BaggageImpl;
+//# sourceMappingURL=baggage-impl.js.map
+
+/***/ }),
+
+/***/ 3542:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.baggageEntryMetadataSymbol = void 0;
+/**
+ * Symbol used to make BaggageEntryMetadata an opaque type
+ */
+exports.baggageEntryMetadataSymbol = Symbol('BaggageEntryMetadata');
+//# sourceMappingURL=symbol.js.map
+
+/***/ }),
+
+/***/ 8136:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.baggageEntryMetadataFromString = exports.createBaggage = void 0;
+const diag_1 = __nccwpck_require__(1877);
+const baggage_impl_1 = __nccwpck_require__(4811);
+const symbol_1 = __nccwpck_require__(3542);
+const diag = diag_1.DiagAPI.instance();
+/**
+ * Create a new Baggage with optional entries
+ *
+ * @param entries An array of baggage entries the new baggage should contain
+ */
+function createBaggage(entries = {}) {
+    return new baggage_impl_1.BaggageImpl(new Map(Object.entries(entries)));
+}
+exports.createBaggage = createBaggage;
+/**
+ * Create a serializable BaggageEntryMetadata object from a string.
+ *
+ * @param str string metadata. Format is currently not defined by the spec and has no special meaning.
+ *
+ */
+function baggageEntryMetadataFromString(str) {
+    if (typeof str !== 'string') {
+        diag.error(`Cannot create baggage metadata from unknown type: ${typeof str}`);
+        str = '';
+    }
+    return {
+        __TYPE__: symbol_1.baggageEntryMetadataSymbol,
+        toString() {
+            return str;
+        },
+    };
+}
+exports.baggageEntryMetadataFromString = baggageEntryMetadataFromString;
+//# sourceMappingURL=utils.js.map
+
+/***/ }),
+
+/***/ 7393:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.context = void 0;
+// Split module-level variable definition into separate files to allow
+// tree-shaking on each api instance.
+const context_1 = __nccwpck_require__(7171);
+/** Entrypoint for context API */
+exports.context = context_1.ContextAPI.getInstance();
+//# sourceMappingURL=context-api.js.map
+
+/***/ }),
+
+/***/ 4118:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.NoopContextManager = void 0;
+const context_1 = __nccwpck_require__(8242);
+class NoopContextManager {
+    active() {
+        return context_1.ROOT_CONTEXT;
+    }
+    with(_context, fn, thisArg, ...args) {
+        return fn.call(thisArg, ...args);
+    }
+    bind(_context, target) {
+        return target;
+    }
+    enable() {
+        return this;
+    }
+    disable() {
+        return this;
+    }
+}
+exports.NoopContextManager = NoopContextManager;
+//# sourceMappingURL=NoopContextManager.js.map
+
+/***/ }),
+
+/***/ 8242:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.ROOT_CONTEXT = exports.createContextKey = void 0;
+/** Get a key to uniquely identify a context value */
+function createContextKey(description) {
+    // The specification states that for the same input, multiple calls should
+    // return different keys. Due to the nature of the JS dependency management
+    // system, this creates problems where multiple versions of some package
+    // could hold different keys for the same property.
+    //
+    // Therefore, we use Symbol.for which returns the same key for the same input.
+    return Symbol.for(description);
+}
+exports.createContextKey = createContextKey;
+class BaseContext {
+    /**
+     * Construct a new context which inherits values from an optional parent context.
+     *
+     * @param parentContext a context from which to inherit values
+     */
+    constructor(parentContext) {
+        // for minification
+        const self = this;
+        self._currentContext = parentContext ? new Map(parentContext) : new Map();
+        self.getValue = (key) => self._currentContext.get(key);
+        self.setValue = (key, value) => {
+            const context = new BaseContext(self._currentContext);
+            context._currentContext.set(key, value);
+            return context;
+        };
+        self.deleteValue = (key) => {
+            const context = new BaseContext(self._currentContext);
+            context._currentContext.delete(key);
+            return context;
+        };
+    }
+}
+/** The root context is used as the default parent context when there is no active context */
+exports.ROOT_CONTEXT = new BaseContext();
+//# sourceMappingURL=context.js.map
+
+/***/ }),
+
+/***/ 9721:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.diag = void 0;
+// Split module-level variable definition into separate files to allow
+// tree-shaking on each api instance.
+const diag_1 = __nccwpck_require__(1877);
+/**
+ * Entrypoint for Diag API.
+ * Defines Diagnostic handler used for internal diagnostic logging operations.
+ * The default provides a Noop DiagLogger implementation which may be changed via the
+ * diag.setLogger(logger: DiagLogger) function.
+ */
+exports.diag = diag_1.DiagAPI.instance();
+//# sourceMappingURL=diag-api.js.map
+
+/***/ }),
+
+/***/ 7978:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.DiagComponentLogger = void 0;
+const global_utils_1 = __nccwpck_require__(5135);
+/**
+ * Component Logger which is meant to be used as part of any component which
+ * will add automatically additional namespace in front of the log message.
+ * It will then forward all message to global diag logger
+ * @example
+ * const cLogger = diag.createComponentLogger({ namespace: '@opentelemetry/instrumentation-http' });
+ * cLogger.debug('test');
+ * // @opentelemetry/instrumentation-http test
+ */
+class DiagComponentLogger {
+    constructor(props) {
+        this._namespace = props.namespace || 'DiagComponentLogger';
+    }
+    debug(...args) {
+        return logProxy('debug', this._namespace, args);
+    }
+    error(...args) {
+        return logProxy('error', this._namespace, args);
+    }
+    info(...args) {
+        return logProxy('info', this._namespace, args);
+    }
+    warn(...args) {
+        return logProxy('warn', this._namespace, args);
+    }
+    verbose(...args) {
+        return logProxy('verbose', this._namespace, args);
+    }
+}
+exports.DiagComponentLogger = DiagComponentLogger;
+function logProxy(funcName, namespace, args) {
+    const logger = (0, global_utils_1.getGlobal)('diag');
+    // shortcut if logger not set
+    if (!logger) {
+        return;
+    }
+    args.unshift(namespace);
+    return logger[funcName](...args);
+}
+//# sourceMappingURL=ComponentLogger.js.map
+
+/***/ }),
+
+/***/ 3041:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.DiagConsoleLogger = void 0;
+const consoleMap = [
+    { n: 'error', c: 'error' },
+    { n: 'warn', c: 'warn' },
+    { n: 'info', c: 'info' },
+    { n: 'debug', c: 'debug' },
+    { n: 'verbose', c: 'trace' },
+];
+/**
+ * A simple Immutable Console based diagnostic logger which will output any messages to the Console.
+ * If you want to limit the amount of logging to a specific level or lower use the
+ * {@link createLogLevelDiagLogger}
+ */
+class DiagConsoleLogger {
+    constructor() {
+        function _consoleFunc(funcName) {
+            return function (...args) {
+                if (console) {
+                    // Some environments only expose the console when the F12 developer console is open
+                    // eslint-disable-next-line no-console
+                    let theFunc = console[funcName];
+                    if (typeof theFunc !== 'function') {
+                        // Not all environments support all functions
+                        // eslint-disable-next-line no-console
+                        theFunc = console.log;
+                    }
+                    // One last final check
+                    if (typeof theFunc === 'function') {
+                        return theFunc.apply(console, args);
+                    }
+                }
+            };
+        }
+        for (let i = 0; i < consoleMap.length; i++) {
+            this[consoleMap[i].n] = _consoleFunc(consoleMap[i].c);
+        }
+    }
+}
+exports.DiagConsoleLogger = DiagConsoleLogger;
+//# sourceMappingURL=consoleLogger.js.map
+
+/***/ }),
+
+/***/ 9639:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.createLogLevelDiagLogger = void 0;
+const types_1 = __nccwpck_require__(8077);
+function createLogLevelDiagLogger(maxLevel, logger) {
+    if (maxLevel < types_1.DiagLogLevel.NONE) {
+        maxLevel = types_1.DiagLogLevel.NONE;
+    }
+    else if (maxLevel > types_1.DiagLogLevel.ALL) {
+        maxLevel = types_1.DiagLogLevel.ALL;
+    }
+    // In case the logger is null or undefined
+    logger = logger || {};
+    function _filterFunc(funcName, theLevel) {
+        const theFunc = logger[funcName];
+        if (typeof theFunc === 'function' && maxLevel >= theLevel) {
+            return theFunc.bind(logger);
+        }
+        return function () { };
+    }
+    return {
+        error: _filterFunc('error', types_1.DiagLogLevel.ERROR),
+        warn: _filterFunc('warn', types_1.DiagLogLevel.WARN),
+        info: _filterFunc('info', types_1.DiagLogLevel.INFO),
+        debug: _filterFunc('debug', types_1.DiagLogLevel.DEBUG),
+        verbose: _filterFunc('verbose', types_1.DiagLogLevel.VERBOSE),
+    };
+}
+exports.createLogLevelDiagLogger = createLogLevelDiagLogger;
+//# sourceMappingURL=logLevelLogger.js.map
+
+/***/ }),
+
+/***/ 8077:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.DiagLogLevel = void 0;
+/**
+ * Defines the available internal logging levels for the diagnostic logger, the numeric values
+ * of the levels are defined to match the original values from the initial LogLevel to avoid
+ * compatibility/migration issues for any implementation that assume the numeric ordering.
+ */
+var DiagLogLevel;
+(function (DiagLogLevel) {
+    /** Diagnostic Logging level setting to disable all logging (except and forced logs) */
+    DiagLogLevel[DiagLogLevel["NONE"] = 0] = "NONE";
+    /** Identifies an error scenario */
+    DiagLogLevel[DiagLogLevel["ERROR"] = 30] = "ERROR";
+    /** Identifies a warning scenario */
+    DiagLogLevel[DiagLogLevel["WARN"] = 50] = "WARN";
+    /** General informational log message */
+    DiagLogLevel[DiagLogLevel["INFO"] = 60] = "INFO";
+    /** General debug log message */
+    DiagLogLevel[DiagLogLevel["DEBUG"] = 70] = "DEBUG";
+    /**
+     * Detailed trace level logging should only be used for development, should only be set
+     * in a development environment.
+     */
+    DiagLogLevel[DiagLogLevel["VERBOSE"] = 80] = "VERBOSE";
+    /** Used to set the logging level to include all logging */
+    DiagLogLevel[DiagLogLevel["ALL"] = 9999] = "ALL";
+})(DiagLogLevel = exports.DiagLogLevel || (exports.DiagLogLevel = {}));
+//# sourceMappingURL=types.js.map
+
+/***/ }),
+
+/***/ 5163:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.trace = exports.propagation = exports.metrics = exports.diag = exports.context = exports.INVALID_SPAN_CONTEXT = exports.INVALID_TRACEID = exports.INVALID_SPANID = exports.isValidSpanId = exports.isValidTraceId = exports.isSpanContextValid = exports.createTraceState = exports.TraceFlags = exports.SpanStatusCode = exports.SpanKind = exports.SamplingDecision = exports.ProxyTracerProvider = exports.ProxyTracer = exports.defaultTextMapSetter = exports.defaultTextMapGetter = exports.ValueType = exports.createNoopMeter = exports.DiagLogLevel = exports.DiagConsoleLogger = exports.ROOT_CONTEXT = exports.createContextKey = exports.baggageEntryMetadataFromString = void 0;
+var utils_1 = __nccwpck_require__(8136);
+Object.defineProperty(exports, "baggageEntryMetadataFromString", ({ enumerable: true, get: function () { return utils_1.baggageEntryMetadataFromString; } }));
+// Context APIs
+var context_1 = __nccwpck_require__(8242);
+Object.defineProperty(exports, "createContextKey", ({ enumerable: true, get: function () { return context_1.createContextKey; } }));
+Object.defineProperty(exports, "ROOT_CONTEXT", ({ enumerable: true, get: function () { return context_1.ROOT_CONTEXT; } }));
+// Diag APIs
+var consoleLogger_1 = __nccwpck_require__(3041);
+Object.defineProperty(exports, "DiagConsoleLogger", ({ enumerable: true, get: function () { return consoleLogger_1.DiagConsoleLogger; } }));
+var types_1 = __nccwpck_require__(8077);
+Object.defineProperty(exports, "DiagLogLevel", ({ enumerable: true, get: function () { return types_1.DiagLogLevel; } }));
+// Metrics APIs
+var NoopMeter_1 = __nccwpck_require__(4837);
+Object.defineProperty(exports, "createNoopMeter", ({ enumerable: true, get: function () { return NoopMeter_1.createNoopMeter; } }));
+var Metric_1 = __nccwpck_require__(9999);
+Object.defineProperty(exports, "ValueType", ({ enumerable: true, get: function () { return Metric_1.ValueType; } }));
+// Propagation APIs
+var TextMapPropagator_1 = __nccwpck_require__(865);
+Object.defineProperty(exports, "defaultTextMapGetter", ({ enumerable: true, get: function () { return TextMapPropagator_1.defaultTextMapGetter; } }));
+Object.defineProperty(exports, "defaultTextMapSetter", ({ enumerable: true, get: function () { return TextMapPropagator_1.defaultTextMapSetter; } }));
+var ProxyTracer_1 = __nccwpck_require__(3503);
+Object.defineProperty(exports, "ProxyTracer", ({ enumerable: true, get: function () { return ProxyTracer_1.ProxyTracer; } }));
+var ProxyTracerProvider_1 = __nccwpck_require__(2285);
+Object.defineProperty(exports, "ProxyTracerProvider", ({ enumerable: true, get: function () { return ProxyTracerProvider_1.ProxyTracerProvider; } }));
+var SamplingResult_1 = __nccwpck_require__(3209);
+Object.defineProperty(exports, "SamplingDecision", ({ enumerable: true, get: function () { return SamplingResult_1.SamplingDecision; } }));
+var span_kind_1 = __nccwpck_require__(1424);
+Object.defineProperty(exports, "SpanKind", ({ enumerable: true, get: function () { return span_kind_1.SpanKind; } }));
+var status_1 = __nccwpck_require__(8845);
+Object.defineProperty(exports, "SpanStatusCode", ({ enumerable: true, get: function () { return status_1.SpanStatusCode; } }));
+var trace_flags_1 = __nccwpck_require__(6905);
+Object.defineProperty(exports, "TraceFlags", ({ enumerable: true, get: function () { return trace_flags_1.TraceFlags; } }));
+var utils_2 = __nccwpck_require__(2615);
+Object.defineProperty(exports, "createTraceState", ({ enumerable: true, get: function () { return utils_2.createTraceState; } }));
+var spancontext_utils_1 = __nccwpck_require__(9745);
+Object.defineProperty(exports, "isSpanContextValid", ({ enumerable: true, get: function () { return spancontext_utils_1.isSpanContextValid; } }));
+Object.defineProperty(exports, "isValidTraceId", ({ enumerable: true, get: function () { return spancontext_utils_1.isValidTraceId; } }));
+Object.defineProperty(exports, "isValidSpanId", ({ enumerable: true, get: function () { return spancontext_utils_1.isValidSpanId; } }));
+var invalid_span_constants_1 = __nccwpck_require__(1760);
+Object.defineProperty(exports, "INVALID_SPANID", ({ enumerable: true, get: function () { return invalid_span_constants_1.INVALID_SPANID; } }));
+Object.defineProperty(exports, "INVALID_TRACEID", ({ enumerable: true, get: function () { return invalid_span_constants_1.INVALID_TRACEID; } }));
+Object.defineProperty(exports, "INVALID_SPAN_CONTEXT", ({ enumerable: true, get: function () { return invalid_span_constants_1.INVALID_SPAN_CONTEXT; } }));
+// Split module-level variable definition into separate files to allow
+// tree-shaking on each api instance.
+const context_api_1 = __nccwpck_require__(7393);
+Object.defineProperty(exports, "context", ({ enumerable: true, get: function () { return context_api_1.context; } }));
+const diag_api_1 = __nccwpck_require__(9721);
+Object.defineProperty(exports, "diag", ({ enumerable: true, get: function () { return diag_api_1.diag; } }));
+const metrics_api_1 = __nccwpck_require__(2601);
+Object.defineProperty(exports, "metrics", ({ enumerable: true, get: function () { return metrics_api_1.metrics; } }));
+const propagation_api_1 = __nccwpck_require__(7591);
+Object.defineProperty(exports, "propagation", ({ enumerable: true, get: function () { return propagation_api_1.propagation; } }));
+const trace_api_1 = __nccwpck_require__(8989);
+Object.defineProperty(exports, "trace", ({ enumerable: true, get: function () { return trace_api_1.trace; } }));
+// Default export.
+exports["default"] = {
+    context: context_api_1.context,
+    diag: diag_api_1.diag,
+    metrics: metrics_api_1.metrics,
+    propagation: propagation_api_1.propagation,
+    trace: trace_api_1.trace,
+};
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 5135:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.unregisterGlobal = exports.getGlobal = exports.registerGlobal = void 0;
+const platform_1 = __nccwpck_require__(9957);
+const version_1 = __nccwpck_require__(8996);
+const semver_1 = __nccwpck_require__(1522);
+const major = version_1.VERSION.split('.')[0];
+const GLOBAL_OPENTELEMETRY_API_KEY = Symbol.for(`opentelemetry.js.api.${major}`);
+const _global = platform_1._globalThis;
+function registerGlobal(type, instance, diag, allowOverride = false) {
+    var _a;
+    const api = (_global[GLOBAL_OPENTELEMETRY_API_KEY] = (_a = _global[GLOBAL_OPENTELEMETRY_API_KEY]) !== null && _a !== void 0 ? _a : {
+        version: version_1.VERSION,
+    });
+    if (!allowOverride && api[type]) {
+        // already registered an API of this type
+        const err = new Error(`@opentelemetry/api: Attempted duplicate registration of API: ${type}`);
+        diag.error(err.stack || err.message);
+        return false;
+    }
+    if (api.version !== version_1.VERSION) {
+        // All registered APIs must be of the same version exactly
+        const err = new Error('@opentelemetry/api: All API registration versions must match');
+        diag.error(err.stack || err.message);
+        return false;
+    }
+    api[type] = instance;
+    diag.debug(`@opentelemetry/api: Registered a global for ${type} v${version_1.VERSION}.`);
+    return true;
+}
+exports.registerGlobal = registerGlobal;
+function getGlobal(type) {
+    var _a, _b;
+    const globalVersion = (_a = _global[GLOBAL_OPENTELEMETRY_API_KEY]) === null || _a === void 0 ? void 0 : _a.version;
+    if (!globalVersion || !(0, semver_1.isCompatible)(globalVersion)) {
+        return;
+    }
+    return (_b = _global[GLOBAL_OPENTELEMETRY_API_KEY]) === null || _b === void 0 ? void 0 : _b[type];
+}
+exports.getGlobal = getGlobal;
+function unregisterGlobal(type, diag) {
+    diag.debug(`@opentelemetry/api: Unregistering a global for ${type} v${version_1.VERSION}.`);
+    const api = _global[GLOBAL_OPENTELEMETRY_API_KEY];
+    if (api) {
+        delete api[type];
+    }
+}
+exports.unregisterGlobal = unregisterGlobal;
+//# sourceMappingURL=global-utils.js.map
+
+/***/ }),
+
+/***/ 1522:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.isCompatible = exports._makeCompatibilityCheck = void 0;
+const version_1 = __nccwpck_require__(8996);
+const re = /^(\d+)\.(\d+)\.(\d+)(-(.+))?$/;
+/**
+ * Create a function to test an API version to see if it is compatible with the provided ownVersion.
+ *
+ * The returned function has the following semantics:
+ * - Exact match is always compatible
+ * - Major versions must match exactly
+ *    - 1.x package cannot use global 2.x package
+ *    - 2.x package cannot use global 1.x package
+ * - The minor version of the API module requesting access to the global API must be less than or equal to the minor version of this API
+ *    - 1.3 package may use 1.4 global because the later global contains all functions 1.3 expects
+ *    - 1.4 package may NOT use 1.3 global because it may try to call functions which don't exist on 1.3
+ * - If the major version is 0, the minor version is treated as the major and the patch is treated as the minor
+ * - Patch and build tag differences are not considered at this time
+ *
+ * @param ownVersion version which should be checked against
+ */
+function _makeCompatibilityCheck(ownVersion) {
+    const acceptedVersions = new Set([ownVersion]);
+    const rejectedVersions = new Set();
+    const myVersionMatch = ownVersion.match(re);
+    if (!myVersionMatch) {
+        // we cannot guarantee compatibility so we always return noop
+        return () => false;
+    }
+    const ownVersionParsed = {
+        major: +myVersionMatch[1],
+        minor: +myVersionMatch[2],
+        patch: +myVersionMatch[3],
+        prerelease: myVersionMatch[4],
+    };
+    // if ownVersion has a prerelease tag, versions must match exactly
+    if (ownVersionParsed.prerelease != null) {
+        return function isExactmatch(globalVersion) {
+            return globalVersion === ownVersion;
+        };
+    }
+    function _reject(v) {
+        rejectedVersions.add(v);
+        return false;
+    }
+    function _accept(v) {
+        acceptedVersions.add(v);
+        return true;
+    }
+    return function isCompatible(globalVersion) {
+        if (acceptedVersions.has(globalVersion)) {
+            return true;
+        }
+        if (rejectedVersions.has(globalVersion)) {
+            return false;
+        }
+        const globalVersionMatch = globalVersion.match(re);
+        if (!globalVersionMatch) {
+            // cannot parse other version
+            // we cannot guarantee compatibility so we always noop
+            return _reject(globalVersion);
+        }
+        const globalVersionParsed = {
+            major: +globalVersionMatch[1],
+            minor: +globalVersionMatch[2],
+            patch: +globalVersionMatch[3],
+            prerelease: globalVersionMatch[4],
+        };
+        // if globalVersion has a prerelease tag, versions must match exactly
+        if (globalVersionParsed.prerelease != null) {
+            return _reject(globalVersion);
+        }
+        // major versions must match
+        if (ownVersionParsed.major !== globalVersionParsed.major) {
+            return _reject(globalVersion);
+        }
+        if (ownVersionParsed.major === 0) {
+            if (ownVersionParsed.minor === globalVersionParsed.minor &&
+                ownVersionParsed.patch <= globalVersionParsed.patch) {
+                return _accept(globalVersion);
+            }
+            return _reject(globalVersion);
+        }
+        if (ownVersionParsed.minor <= globalVersionParsed.minor) {
+            return _accept(globalVersion);
+        }
+        return _reject(globalVersion);
+    };
+}
+exports._makeCompatibilityCheck = _makeCompatibilityCheck;
+/**
+ * Test an API version to see if it is compatible with this API.
+ *
+ * - Exact match is always compatible
+ * - Major versions must match exactly
+ *    - 1.x package cannot use global 2.x package
+ *    - 2.x package cannot use global 1.x package
+ * - The minor version of the API module requesting access to the global API must be less than or equal to the minor version of this API
+ *    - 1.3 package may use 1.4 global because the later global contains all functions 1.3 expects
+ *    - 1.4 package may NOT use 1.3 global because it may try to call functions which don't exist on 1.3
+ * - If the major version is 0, the minor version is treated as the major and the patch is treated as the minor
+ * - Patch and build tag differences are not considered at this time
+ *
+ * @param version version of the API requesting an instance of the global API
+ */
+exports.isCompatible = _makeCompatibilityCheck(version_1.VERSION);
+//# sourceMappingURL=semver.js.map
+
+/***/ }),
+
+/***/ 2601:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.metrics = void 0;
+// Split module-level variable definition into separate files to allow
+// tree-shaking on each api instance.
+const metrics_1 = __nccwpck_require__(7696);
+/** Entrypoint for metrics API */
+exports.metrics = metrics_1.MetricsAPI.getInstance();
+//# sourceMappingURL=metrics-api.js.map
+
+/***/ }),
+
+/***/ 9999:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.ValueType = void 0;
+/** The Type of value. It describes how the data is reported. */
+var ValueType;
+(function (ValueType) {
+    ValueType[ValueType["INT"] = 0] = "INT";
+    ValueType[ValueType["DOUBLE"] = 1] = "DOUBLE";
+})(ValueType = exports.ValueType || (exports.ValueType = {}));
+//# sourceMappingURL=Metric.js.map
+
+/***/ }),
+
+/***/ 4837:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.createNoopMeter = exports.NOOP_OBSERVABLE_UP_DOWN_COUNTER_METRIC = exports.NOOP_OBSERVABLE_GAUGE_METRIC = exports.NOOP_OBSERVABLE_COUNTER_METRIC = exports.NOOP_UP_DOWN_COUNTER_METRIC = exports.NOOP_HISTOGRAM_METRIC = exports.NOOP_COUNTER_METRIC = exports.NOOP_METER = exports.NoopObservableUpDownCounterMetric = exports.NoopObservableGaugeMetric = exports.NoopObservableCounterMetric = exports.NoopObservableMetric = exports.NoopHistogramMetric = exports.NoopUpDownCounterMetric = exports.NoopCounterMetric = exports.NoopMetric = exports.NoopMeter = void 0;
+/**
+ * NoopMeter is a noop implementation of the {@link Meter} interface. It reuses
+ * constant NoopMetrics for all of its methods.
+ */
+class NoopMeter {
+    constructor() { }
+    /**
+     * @see {@link Meter.createHistogram}
+     */
+    createHistogram(_name, _options) {
+        return exports.NOOP_HISTOGRAM_METRIC;
+    }
+    /**
+     * @see {@link Meter.createCounter}
+     */
+    createCounter(_name, _options) {
+        return exports.NOOP_COUNTER_METRIC;
+    }
+    /**
+     * @see {@link Meter.createUpDownCounter}
+     */
+    createUpDownCounter(_name, _options) {
+        return exports.NOOP_UP_DOWN_COUNTER_METRIC;
+    }
+    /**
+     * @see {@link Meter.createObservableGauge}
+     */
+    createObservableGauge(_name, _options) {
+        return exports.NOOP_OBSERVABLE_GAUGE_METRIC;
+    }
+    /**
+     * @see {@link Meter.createObservableCounter}
+     */
+    createObservableCounter(_name, _options) {
+        return exports.NOOP_OBSERVABLE_COUNTER_METRIC;
+    }
+    /**
+     * @see {@link Meter.createObservableUpDownCounter}
+     */
+    createObservableUpDownCounter(_name, _options) {
+        return exports.NOOP_OBSERVABLE_UP_DOWN_COUNTER_METRIC;
+    }
+    /**
+     * @see {@link Meter.addBatchObservableCallback}
+     */
+    addBatchObservableCallback(_callback, _observables) { }
+    /**
+     * @see {@link Meter.removeBatchObservableCallback}
+     */
+    removeBatchObservableCallback(_callback) { }
+}
+exports.NoopMeter = NoopMeter;
+class NoopMetric {
+}
+exports.NoopMetric = NoopMetric;
+class NoopCounterMetric extends NoopMetric {
+    add(_value, _attributes) { }
+}
+exports.NoopCounterMetric = NoopCounterMetric;
+class NoopUpDownCounterMetric extends NoopMetric {
+    add(_value, _attributes) { }
+}
+exports.NoopUpDownCounterMetric = NoopUpDownCounterMetric;
+class NoopHistogramMetric extends NoopMetric {
+    record(_value, _attributes) { }
+}
+exports.NoopHistogramMetric = NoopHistogramMetric;
+class NoopObservableMetric {
+    addCallback(_callback) { }
+    removeCallback(_callback) { }
+}
+exports.NoopObservableMetric = NoopObservableMetric;
+class NoopObservableCounterMetric extends NoopObservableMetric {
+}
+exports.NoopObservableCounterMetric = NoopObservableCounterMetric;
+class NoopObservableGaugeMetric extends NoopObservableMetric {
+}
+exports.NoopObservableGaugeMetric = NoopObservableGaugeMetric;
+class NoopObservableUpDownCounterMetric extends NoopObservableMetric {
+}
+exports.NoopObservableUpDownCounterMetric = NoopObservableUpDownCounterMetric;
+exports.NOOP_METER = new NoopMeter();
+// Synchronous instruments
+exports.NOOP_COUNTER_METRIC = new NoopCounterMetric();
+exports.NOOP_HISTOGRAM_METRIC = new NoopHistogramMetric();
+exports.NOOP_UP_DOWN_COUNTER_METRIC = new NoopUpDownCounterMetric();
+// Asynchronous instruments
+exports.NOOP_OBSERVABLE_COUNTER_METRIC = new NoopObservableCounterMetric();
+exports.NOOP_OBSERVABLE_GAUGE_METRIC = new NoopObservableGaugeMetric();
+exports.NOOP_OBSERVABLE_UP_DOWN_COUNTER_METRIC = new NoopObservableUpDownCounterMetric();
+/**
+ * Create a no-op Meter
+ */
+function createNoopMeter() {
+    return exports.NOOP_METER;
+}
+exports.createNoopMeter = createNoopMeter;
+//# sourceMappingURL=NoopMeter.js.map
+
+/***/ }),
+
+/***/ 2647:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.NOOP_METER_PROVIDER = exports.NoopMeterProvider = void 0;
+const NoopMeter_1 = __nccwpck_require__(4837);
+/**
+ * An implementation of the {@link MeterProvider} which returns an impotent Meter
+ * for all calls to `getMeter`
+ */
+class NoopMeterProvider {
+    getMeter(_name, _version, _options) {
+        return NoopMeter_1.NOOP_METER;
+    }
+}
+exports.NoopMeterProvider = NoopMeterProvider;
+exports.NOOP_METER_PROVIDER = new NoopMeterProvider();
+//# sourceMappingURL=NoopMeterProvider.js.map
+
+/***/ }),
+
+/***/ 9957:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __exportStar = (this && this.__exportStar) || function(m, exports) {
+    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+__exportStar(__nccwpck_require__(7200), exports);
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 9406:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports._globalThis = void 0;
+/** only globals that common to node and browsers are allowed */
+// eslint-disable-next-line node/no-unsupported-features/es-builtins
+exports._globalThis = typeof globalThis === 'object' ? globalThis : global;
+//# sourceMappingURL=globalThis.js.map
+
+/***/ }),
+
+/***/ 7200:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __exportStar = (this && this.__exportStar) || function(m, exports) {
+    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+__exportStar(__nccwpck_require__(9406), exports);
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 7591:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.propagation = void 0;
+// Split module-level variable definition into separate files to allow
+// tree-shaking on each api instance.
+const propagation_1 = __nccwpck_require__(9909);
+/** Entrypoint for propagation API */
+exports.propagation = propagation_1.PropagationAPI.getInstance();
+//# sourceMappingURL=propagation-api.js.map
+
+/***/ }),
+
+/***/ 2368:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.NoopTextMapPropagator = void 0;
+/**
+ * No-op implementations of {@link TextMapPropagator}.
+ */
+class NoopTextMapPropagator {
+    /** Noop inject function does nothing */
+    inject(_context, _carrier) { }
+    /** Noop extract function does nothing and returns the input context */
+    extract(context, _carrier) {
+        return context;
+    }
+    fields() {
+        return [];
+    }
+}
+exports.NoopTextMapPropagator = NoopTextMapPropagator;
+//# sourceMappingURL=NoopTextMapPropagator.js.map
+
+/***/ }),
+
+/***/ 865:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.defaultTextMapSetter = exports.defaultTextMapGetter = void 0;
+exports.defaultTextMapGetter = {
+    get(carrier, key) {
+        if (carrier == null) {
+            return undefined;
+        }
+        return carrier[key];
+    },
+    keys(carrier) {
+        if (carrier == null) {
+            return [];
+        }
+        return Object.keys(carrier);
+    },
+};
+exports.defaultTextMapSetter = {
+    set(carrier, key, value) {
+        if (carrier == null) {
+            return;
+        }
+        carrier[key] = value;
+    },
+};
+//# sourceMappingURL=TextMapPropagator.js.map
+
+/***/ }),
+
+/***/ 8989:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.trace = void 0;
+// Split module-level variable definition into separate files to allow
+// tree-shaking on each api instance.
+const trace_1 = __nccwpck_require__(1539);
+/** Entrypoint for trace API */
+exports.trace = trace_1.TraceAPI.getInstance();
+//# sourceMappingURL=trace-api.js.map
+
+/***/ }),
+
+/***/ 1462:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.NonRecordingSpan = void 0;
+const invalid_span_constants_1 = __nccwpck_require__(1760);
+/**
+ * The NonRecordingSpan is the default {@link Span} that is used when no Span
+ * implementation is available. All operations are no-op including context
+ * propagation.
+ */
+class NonRecordingSpan {
+    constructor(_spanContext = invalid_span_constants_1.INVALID_SPAN_CONTEXT) {
+        this._spanContext = _spanContext;
+    }
+    // Returns a SpanContext.
+    spanContext() {
+        return this._spanContext;
+    }
+    // By default does nothing
+    setAttribute(_key, _value) {
+        return this;
+    }
+    // By default does nothing
+    setAttributes(_attributes) {
+        return this;
+    }
+    // By default does nothing
+    addEvent(_name, _attributes) {
+        return this;
+    }
+    // By default does nothing
+    setStatus(_status) {
+        return this;
+    }
+    // By default does nothing
+    updateName(_name) {
+        return this;
+    }
+    // By default does nothing
+    end(_endTime) { }
+    // isRecording always returns false for NonRecordingSpan.
+    isRecording() {
+        return false;
+    }
+    // By default does nothing
+    recordException(_exception, _time) { }
+}
+exports.NonRecordingSpan = NonRecordingSpan;
+//# sourceMappingURL=NonRecordingSpan.js.map
+
+/***/ }),
+
+/***/ 7606:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.NoopTracer = void 0;
+const context_1 = __nccwpck_require__(7171);
+const context_utils_1 = __nccwpck_require__(3326);
+const NonRecordingSpan_1 = __nccwpck_require__(1462);
+const spancontext_utils_1 = __nccwpck_require__(9745);
+const contextApi = context_1.ContextAPI.getInstance();
+/**
+ * No-op implementations of {@link Tracer}.
+ */
+class NoopTracer {
+    // startSpan starts a noop span.
+    startSpan(name, options, context) {
+        const root = Boolean(options === null || options === void 0 ? void 0 : options.root);
+        if (root) {
+            return new NonRecordingSpan_1.NonRecordingSpan();
+        }
+        const parentFromContext = context && (0, context_utils_1.getSpanContext)(context);
+        if (isSpanContext(parentFromContext) &&
+            (0, spancontext_utils_1.isSpanContextValid)(parentFromContext)) {
+            return new NonRecordingSpan_1.NonRecordingSpan(parentFromContext);
+        }
+        else {
+            return new NonRecordingSpan_1.NonRecordingSpan();
+        }
+    }
+    startActiveSpan(name, arg2, arg3, arg4) {
+        let opts;
+        let ctx;
+        let fn;
+        if (arguments.length < 2) {
+            return;
+        }
+        else if (arguments.length === 2) {
+            fn = arg2;
+        }
+        else if (arguments.length === 3) {
+            opts = arg2;
+            fn = arg3;
+        }
+        else {
+            opts = arg2;
+            ctx = arg3;
+            fn = arg4;
+        }
+        const parentContext = ctx !== null && ctx !== void 0 ? ctx : contextApi.active();
+        const span = this.startSpan(name, opts, parentContext);
+        const contextWithSpanSet = (0, context_utils_1.setSpan)(parentContext, span);
+        return contextApi.with(contextWithSpanSet, fn, undefined, span);
+    }
+}
+exports.NoopTracer = NoopTracer;
+function isSpanContext(spanContext) {
+    return (typeof spanContext === 'object' &&
+        typeof spanContext['spanId'] === 'string' &&
+        typeof spanContext['traceId'] === 'string' &&
+        typeof spanContext['traceFlags'] === 'number');
+}
+//# sourceMappingURL=NoopTracer.js.map
+
+/***/ }),
+
+/***/ 3259:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.NoopTracerProvider = void 0;
+const NoopTracer_1 = __nccwpck_require__(7606);
+/**
+ * An implementation of the {@link TracerProvider} which returns an impotent
+ * Tracer for all calls to `getTracer`.
+ *
+ * All operations are no-op.
+ */
+class NoopTracerProvider {
+    getTracer(_name, _version, _options) {
+        return new NoopTracer_1.NoopTracer();
+    }
+}
+exports.NoopTracerProvider = NoopTracerProvider;
+//# sourceMappingURL=NoopTracerProvider.js.map
+
+/***/ }),
+
+/***/ 3503:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.ProxyTracer = void 0;
+const NoopTracer_1 = __nccwpck_require__(7606);
+const NOOP_TRACER = new NoopTracer_1.NoopTracer();
+/**
+ * Proxy tracer provided by the proxy tracer provider
+ */
+class ProxyTracer {
+    constructor(_provider, name, version, options) {
+        this._provider = _provider;
+        this.name = name;
+        this.version = version;
+        this.options = options;
+    }
+    startSpan(name, options, context) {
+        return this._getTracer().startSpan(name, options, context);
+    }
+    startActiveSpan(_name, _options, _context, _fn) {
+        const tracer = this._getTracer();
+        return Reflect.apply(tracer.startActiveSpan, tracer, arguments);
+    }
+    /**
+     * Try to get a tracer from the proxy tracer provider.
+     * If the proxy tracer provider has no delegate, return a noop tracer.
+     */
+    _getTracer() {
+        if (this._delegate) {
+            return this._delegate;
+        }
+        const tracer = this._provider.getDelegateTracer(this.name, this.version, this.options);
+        if (!tracer) {
+            return NOOP_TRACER;
+        }
+        this._delegate = tracer;
+        return this._delegate;
+    }
+}
+exports.ProxyTracer = ProxyTracer;
+//# sourceMappingURL=ProxyTracer.js.map
+
+/***/ }),
+
+/***/ 2285:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.ProxyTracerProvider = void 0;
+const ProxyTracer_1 = __nccwpck_require__(3503);
+const NoopTracerProvider_1 = __nccwpck_require__(3259);
+const NOOP_TRACER_PROVIDER = new NoopTracerProvider_1.NoopTracerProvider();
+/**
+ * Tracer provider which provides {@link ProxyTracer}s.
+ *
+ * Before a delegate is set, tracers provided are NoOp.
+ *   When a delegate is set, traces are provided from the delegate.
+ *   When a delegate is set after tracers have already been provided,
+ *   all tracers already provided will use the provided delegate implementation.
+ */
+class ProxyTracerProvider {
+    /**
+     * Get a {@link ProxyTracer}
+     */
+    getTracer(name, version, options) {
+        var _a;
+        return ((_a = this.getDelegateTracer(name, version, options)) !== null && _a !== void 0 ? _a : new ProxyTracer_1.ProxyTracer(this, name, version, options));
+    }
+    getDelegate() {
+        var _a;
+        return (_a = this._delegate) !== null && _a !== void 0 ? _a : NOOP_TRACER_PROVIDER;
+    }
+    /**
+     * Set the delegate tracer provider
+     */
+    setDelegate(delegate) {
+        this._delegate = delegate;
+    }
+    getDelegateTracer(name, version, options) {
+        var _a;
+        return (_a = this._delegate) === null || _a === void 0 ? void 0 : _a.getTracer(name, version, options);
+    }
+}
+exports.ProxyTracerProvider = ProxyTracerProvider;
+//# sourceMappingURL=ProxyTracerProvider.js.map
+
+/***/ }),
+
+/***/ 3209:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.SamplingDecision = void 0;
+/**
+ * @deprecated use the one declared in @opentelemetry/sdk-trace-base instead.
+ * A sampling decision that determines how a {@link Span} will be recorded
+ * and collected.
+ */
+var SamplingDecision;
+(function (SamplingDecision) {
+    /**
+     * `Span.isRecording() === false`, span will not be recorded and all events
+     * and attributes will be dropped.
+     */
+    SamplingDecision[SamplingDecision["NOT_RECORD"] = 0] = "NOT_RECORD";
+    /**
+     * `Span.isRecording() === true`, but `Sampled` flag in {@link TraceFlags}
+     * MUST NOT be set.
+     */
+    SamplingDecision[SamplingDecision["RECORD"] = 1] = "RECORD";
+    /**
+     * `Span.isRecording() === true` AND `Sampled` flag in {@link TraceFlags}
+     * MUST be set.
+     */
+    SamplingDecision[SamplingDecision["RECORD_AND_SAMPLED"] = 2] = "RECORD_AND_SAMPLED";
+})(SamplingDecision = exports.SamplingDecision || (exports.SamplingDecision = {}));
+//# sourceMappingURL=SamplingResult.js.map
+
+/***/ }),
+
+/***/ 3326:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getSpanContext = exports.setSpanContext = exports.deleteSpan = exports.setSpan = exports.getActiveSpan = exports.getSpan = void 0;
+const context_1 = __nccwpck_require__(8242);
+const NonRecordingSpan_1 = __nccwpck_require__(1462);
+const context_2 = __nccwpck_require__(7171);
+/**
+ * span key
+ */
+const SPAN_KEY = (0, context_1.createContextKey)('OpenTelemetry Context Key SPAN');
+/**
+ * Return the span if one exists
+ *
+ * @param context context to get span from
+ */
+function getSpan(context) {
+    return context.getValue(SPAN_KEY) || undefined;
+}
+exports.getSpan = getSpan;
+/**
+ * Gets the span from the current context, if one exists.
+ */
+function getActiveSpan() {
+    return getSpan(context_2.ContextAPI.getInstance().active());
+}
+exports.getActiveSpan = getActiveSpan;
+/**
+ * Set the span on a context
+ *
+ * @param context context to use as parent
+ * @param span span to set active
+ */
+function setSpan(context, span) {
+    return context.setValue(SPAN_KEY, span);
+}
+exports.setSpan = setSpan;
+/**
+ * Remove current span stored in the context
+ *
+ * @param context context to delete span from
+ */
+function deleteSpan(context) {
+    return context.deleteValue(SPAN_KEY);
+}
+exports.deleteSpan = deleteSpan;
+/**
+ * Wrap span context in a NoopSpan and set as span in a new
+ * context
+ *
+ * @param context context to set active span on
+ * @param spanContext span context to be wrapped
+ */
+function setSpanContext(context, spanContext) {
+    return setSpan(context, new NonRecordingSpan_1.NonRecordingSpan(spanContext));
+}
+exports.setSpanContext = setSpanContext;
+/**
+ * Get the span context of the span if it exists.
+ *
+ * @param context context to get values from
+ */
+function getSpanContext(context) {
+    var _a;
+    return (_a = getSpan(context)) === null || _a === void 0 ? void 0 : _a.spanContext();
+}
+exports.getSpanContext = getSpanContext;
+//# sourceMappingURL=context-utils.js.map
+
+/***/ }),
+
+/***/ 2110:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.TraceStateImpl = void 0;
+const tracestate_validators_1 = __nccwpck_require__(4864);
+const MAX_TRACE_STATE_ITEMS = 32;
+const MAX_TRACE_STATE_LEN = 512;
+const LIST_MEMBERS_SEPARATOR = ',';
+const LIST_MEMBER_KEY_VALUE_SPLITTER = '=';
+/**
+ * TraceState must be a class and not a simple object type because of the spec
+ * requirement (https://www.w3.org/TR/trace-context/#tracestate-field).
+ *
+ * Here is the list of allowed mutations:
+ * - New key-value pair should be added into the beginning of the list
+ * - The value of any key can be updated. Modified keys MUST be moved to the
+ * beginning of the list.
+ */
+class TraceStateImpl {
+    constructor(rawTraceState) {
+        this._internalState = new Map();
+        if (rawTraceState)
+            this._parse(rawTraceState);
+    }
+    set(key, value) {
+        // TODO: Benchmark the different approaches(map vs list) and
+        // use the faster one.
+        const traceState = this._clone();
+        if (traceState._internalState.has(key)) {
+            traceState._internalState.delete(key);
+        }
+        traceState._internalState.set(key, value);
+        return traceState;
+    }
+    unset(key) {
+        const traceState = this._clone();
+        traceState._internalState.delete(key);
+        return traceState;
+    }
+    get(key) {
+        return this._internalState.get(key);
+    }
+    serialize() {
+        return this._keys()
+            .reduce((agg, key) => {
+            agg.push(key + LIST_MEMBER_KEY_VALUE_SPLITTER + this.get(key));
+            return agg;
+        }, [])
+            .join(LIST_MEMBERS_SEPARATOR);
+    }
+    _parse(rawTraceState) {
+        if (rawTraceState.length > MAX_TRACE_STATE_LEN)
+            return;
+        this._internalState = rawTraceState
+            .split(LIST_MEMBERS_SEPARATOR)
+            .reverse() // Store in reverse so new keys (.set(...)) will be placed at the beginning
+            .reduce((agg, part) => {
+            const listMember = part.trim(); // Optional Whitespace (OWS) handling
+            const i = listMember.indexOf(LIST_MEMBER_KEY_VALUE_SPLITTER);
+            if (i !== -1) {
+                const key = listMember.slice(0, i);
+                const value = listMember.slice(i + 1, part.length);
+                if ((0, tracestate_validators_1.validateKey)(key) && (0, tracestate_validators_1.validateValue)(value)) {
+                    agg.set(key, value);
+                }
+                else {
+                    // TODO: Consider to add warning log
+                }
+            }
+            return agg;
+        }, new Map());
+        // Because of the reverse() requirement, trunc must be done after map is created
+        if (this._internalState.size > MAX_TRACE_STATE_ITEMS) {
+            this._internalState = new Map(Array.from(this._internalState.entries())
+                .reverse() // Use reverse same as original tracestate parse chain
+                .slice(0, MAX_TRACE_STATE_ITEMS));
+        }
+    }
+    _keys() {
+        return Array.from(this._internalState.keys()).reverse();
+    }
+    _clone() {
+        const traceState = new TraceStateImpl();
+        traceState._internalState = new Map(this._internalState);
+        return traceState;
+    }
+}
+exports.TraceStateImpl = TraceStateImpl;
+//# sourceMappingURL=tracestate-impl.js.map
+
+/***/ }),
+
+/***/ 4864:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.validateValue = exports.validateKey = void 0;
+const VALID_KEY_CHAR_RANGE = '[_0-9a-z-*/]';
+const VALID_KEY = `[a-z]${VALID_KEY_CHAR_RANGE}{0,255}`;
+const VALID_VENDOR_KEY = `[a-z0-9]${VALID_KEY_CHAR_RANGE}{0,240}@[a-z]${VALID_KEY_CHAR_RANGE}{0,13}`;
+const VALID_KEY_REGEX = new RegExp(`^(?:${VALID_KEY}|${VALID_VENDOR_KEY})$`);
+const VALID_VALUE_BASE_REGEX = /^[ -~]{0,255}[!-~]$/;
+const INVALID_VALUE_COMMA_EQUAL_REGEX = /,|=/;
+/**
+ * Key is opaque string up to 256 characters printable. It MUST begin with a
+ * lowercase letter, and can only contain lowercase letters a-z, digits 0-9,
+ * underscores _, dashes -, asterisks *, and forward slashes /.
+ * For multi-tenant vendor scenarios, an at sign (@) can be used to prefix the
+ * vendor name. Vendors SHOULD set the tenant ID at the beginning of the key.
+ * see https://www.w3.org/TR/trace-context/#key
+ */
+function validateKey(key) {
+    return VALID_KEY_REGEX.test(key);
+}
+exports.validateKey = validateKey;
+/**
+ * Value is opaque string up to 256 characters printable ASCII RFC0020
+ * characters (i.e., the range 0x20 to 0x7E) except comma , and =.
+ */
+function validateValue(value) {
+    return (VALID_VALUE_BASE_REGEX.test(value) &&
+        !INVALID_VALUE_COMMA_EQUAL_REGEX.test(value));
+}
+exports.validateValue = validateValue;
+//# sourceMappingURL=tracestate-validators.js.map
+
+/***/ }),
+
+/***/ 2615:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.createTraceState = void 0;
+const tracestate_impl_1 = __nccwpck_require__(2110);
+function createTraceState(rawTraceState) {
+    return new tracestate_impl_1.TraceStateImpl(rawTraceState);
+}
+exports.createTraceState = createTraceState;
+//# sourceMappingURL=utils.js.map
+
+/***/ }),
+
+/***/ 1760:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.INVALID_SPAN_CONTEXT = exports.INVALID_TRACEID = exports.INVALID_SPANID = void 0;
+const trace_flags_1 = __nccwpck_require__(6905);
+exports.INVALID_SPANID = '0000000000000000';
+exports.INVALID_TRACEID = '00000000000000000000000000000000';
+exports.INVALID_SPAN_CONTEXT = {
+    traceId: exports.INVALID_TRACEID,
+    spanId: exports.INVALID_SPANID,
+    traceFlags: trace_flags_1.TraceFlags.NONE,
+};
+//# sourceMappingURL=invalid-span-constants.js.map
+
+/***/ }),
+
+/***/ 1424:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.SpanKind = void 0;
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+var SpanKind;
+(function (SpanKind) {
+    /** Default value. Indicates that the span is used internally. */
+    SpanKind[SpanKind["INTERNAL"] = 0] = "INTERNAL";
+    /**
+     * Indicates that the span covers server-side handling of an RPC or other
+     * remote request.
+     */
+    SpanKind[SpanKind["SERVER"] = 1] = "SERVER";
+    /**
+     * Indicates that the span covers the client-side wrapper around an RPC or
+     * other remote request.
+     */
+    SpanKind[SpanKind["CLIENT"] = 2] = "CLIENT";
+    /**
+     * Indicates that the span describes producer sending a message to a
+     * broker. Unlike client and server, there is no direct critical path latency
+     * relationship between producer and consumer spans.
+     */
+    SpanKind[SpanKind["PRODUCER"] = 3] = "PRODUCER";
+    /**
+     * Indicates that the span describes consumer receiving a message from a
+     * broker. Unlike client and server, there is no direct critical path latency
+     * relationship between producer and consumer spans.
+     */
+    SpanKind[SpanKind["CONSUMER"] = 4] = "CONSUMER";
+})(SpanKind = exports.SpanKind || (exports.SpanKind = {}));
+//# sourceMappingURL=span_kind.js.map
+
+/***/ }),
+
+/***/ 9745:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.wrapSpanContext = exports.isSpanContextValid = exports.isValidSpanId = exports.isValidTraceId = void 0;
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+const invalid_span_constants_1 = __nccwpck_require__(1760);
+const NonRecordingSpan_1 = __nccwpck_require__(1462);
+const VALID_TRACEID_REGEX = /^([0-9a-f]{32})$/i;
+const VALID_SPANID_REGEX = /^[0-9a-f]{16}$/i;
+function isValidTraceId(traceId) {
+    return VALID_TRACEID_REGEX.test(traceId) && traceId !== invalid_span_constants_1.INVALID_TRACEID;
+}
+exports.isValidTraceId = isValidTraceId;
+function isValidSpanId(spanId) {
+    return VALID_SPANID_REGEX.test(spanId) && spanId !== invalid_span_constants_1.INVALID_SPANID;
+}
+exports.isValidSpanId = isValidSpanId;
+/**
+ * Returns true if this {@link SpanContext} is valid.
+ * @return true if this {@link SpanContext} is valid.
+ */
+function isSpanContextValid(spanContext) {
+    return (isValidTraceId(spanContext.traceId) && isValidSpanId(spanContext.spanId));
+}
+exports.isSpanContextValid = isSpanContextValid;
+/**
+ * Wrap the given {@link SpanContext} in a new non-recording {@link Span}
+ *
+ * @param spanContext span context to be wrapped
+ * @returns a new non-recording {@link Span} with the provided context
+ */
+function wrapSpanContext(spanContext) {
+    return new NonRecordingSpan_1.NonRecordingSpan(spanContext);
+}
+exports.wrapSpanContext = wrapSpanContext;
+//# sourceMappingURL=spancontext-utils.js.map
+
+/***/ }),
+
+/***/ 8845:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.SpanStatusCode = void 0;
+/**
+ * An enumeration of status codes.
+ */
+var SpanStatusCode;
+(function (SpanStatusCode) {
+    /**
+     * The default status.
+     */
+    SpanStatusCode[SpanStatusCode["UNSET"] = 0] = "UNSET";
+    /**
+     * The operation has been validated by an Application developer or
+     * Operator to have completed successfully.
+     */
+    SpanStatusCode[SpanStatusCode["OK"] = 1] = "OK";
+    /**
+     * The operation contains an error.
+     */
+    SpanStatusCode[SpanStatusCode["ERROR"] = 2] = "ERROR";
+})(SpanStatusCode = exports.SpanStatusCode || (exports.SpanStatusCode = {}));
+//# sourceMappingURL=status.js.map
+
+/***/ }),
+
+/***/ 6905:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.TraceFlags = void 0;
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+var TraceFlags;
+(function (TraceFlags) {
+    /** Represents no flag set. */
+    TraceFlags[TraceFlags["NONE"] = 0] = "NONE";
+    /** Bit to represent whether trace is sampled in trace flags. */
+    TraceFlags[TraceFlags["SAMPLED"] = 1] = "SAMPLED";
+})(TraceFlags = exports.TraceFlags || (exports.TraceFlags = {}));
+//# sourceMappingURL=trace_flags.js.map
+
+/***/ }),
+
+/***/ 8996:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.VERSION = void 0;
+// this is autogenerated file, see scripts/version-update.js
+exports.VERSION = '1.3.0';
+//# sourceMappingURL=version.js.map
+
+/***/ }),
+
+/***/ 8008:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.PaginatedFormulationSpecification = exports.PaginatedFormulationAttempt = exports.PaginatedAttempt = exports.UnspecifiedAttemptForRow = exports.ListedAuthorization = exports.FetchedSpecificationFormulation = exports.FetchedSpecificationTagFormulation = exports.FetchedSpecificationTag = exports.FetchedOutlineFormulation = exports.MyAccount = exports.FetchedFormulation = exports.FetchedAttempt = exports.FetchedAttemptOutcome = exports.FullAttemptNotification = exports.FetchedAttemptSummaries = exports.FullObjectiveSummary = exports.FullVariableSummary = exports.FullConstraintSummary = exports.FullParameterSummary = exports.FullValueProfile = exports.FullDimensionSummary = exports.FetchedAttemptOutputs = exports.FullConstraint = exports.FullVariable = exports.FullResult = exports.FetchedAttemptInputs = exports.FullParameter = exports.FullDimension = exports.ExtractedSourceSlice = exports.FullSourceRange = exports.FullSourcePosition = exports.UpdatedFormulation = exports.UnsharedFormulation = exports.SharedSpecificationTag = exports.StartedAttempt = exports.FullAttemptOptions = exports.RegisteredSpecification = exports.SpecificationForOverview = exports.FullOutline = exports.FullConstraintOutline = exports.FullParameterOutline = exports.FullVariableOutline = exports.FullTensorOutline = exports.FullSourceBinding = exports.FullDimensionOutline = exports.FullDefinition = exports.ShallowSpecificationTag = exports.DeletedFormulation = exports.CancelledAttempt = exports.FullPageInfo = void 0;
+exports.PollAttempt = exports.PaginateSharedSpecificationTags = exports.PaginateFormulations = exports.PaginateFormulationSpecifications = exports.PaginateFormulationAttempts = exports.PaginateAttempts = exports.PaginateAttemptNotifications = exports.ListMyAuthorizations = exports.FetchSpecification = exports.FetchSpecificationTag = exports.FetchOutline = exports.FetchMyAccount = exports.FetchFormulation = exports.FetchAttempt = exports.FetchAttemptSummaries = exports.FetchAttemptOutputs = exports.FetchAttemptInputs = exports.ExtractDefinitions = exports.ValidateDefinitions = exports.UpdateFormulation = exports.StopSharingFormulation = exports.StartSharingFormulation = exports.StartAttempt = exports.RevokeAuthorization = exports.RegisterSpecification = exports.GenerateAuthorization = exports.DeleteFormulation = exports.CancelAttempt = exports.PolledAttempt = exports.PolledAttemptOutcome = exports.PaginatedSharedTag = exports.PaginatedFormulation = void 0;
+exports.FullPageInfo = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullPageInfo" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PageInfo" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "startCursor" } }, { "kind": "Field", "name": { "kind": "Name", "value": "endCursor" } }, { "kind": "Field", "name": { "kind": "Name", "value": "hasPreviousPage" } }, { "kind": "Field", "name": { "kind": "Name", "value": "hasNextPage" } }] } }] };
+exports.CancelledAttempt = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "CancelledAttempt" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Attempt" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "uuid" } }, { "kind": "Field", "name": { "kind": "Name", "value": "startedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "dequeuedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "endedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "pristineSpecification" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revno" } }, { "kind": "Field", "name": { "kind": "Name", "value": "formulation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }] } }] } }] } }] };
+exports.DeletedFormulation = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "DeletedFormulation" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeleteFormulationOutput" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "specificationCount" } }, { "kind": "Field", "name": { "kind": "Name", "value": "attemptCount" } }] } }] };
+exports.ShallowSpecificationTag = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ShallowSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastUpdatedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "sharedVia" } }] } }] };
+exports.FullDefinition = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDefinition" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Definition" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "category" } }, { "kind": "Field", "name": { "kind": "Name", "value": "source" } }, { "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "description" } }] } }] };
+exports.FullDimensionOutline = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isNumeric" } }] } }] };
+exports.FullSourceBinding = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }] };
+exports.FullTensorOutline = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }] };
+exports.FullVariableOutline = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeficitVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SurplusVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }] };
+exports.FullParameterOutline = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinParameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }] };
+exports.FullConstraintOutline = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinConstraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }] };
+exports.FullOutline = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objective" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isMaximization" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isQuadratic" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "dimensions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimensionOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "variables" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariableOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameters" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameterOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraintOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isNumeric" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinConstraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeficitVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SurplusVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinParameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }] };
+exports.SpecificationForOverview = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "SpecificationForOverview" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Specification" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revno" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "description" } }, { "kind": "Field", "name": { "kind": "Name", "value": "tags" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ShallowSpecificationTag" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "definitions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDefinition" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "outline" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ShallowSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastUpdatedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "sharedVia" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDefinition" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Definition" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "category" } }, { "kind": "Field", "name": { "kind": "Name", "value": "source" } }, { "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "description" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objective" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isMaximization" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isQuadratic" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "dimensions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimensionOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "variables" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariableOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameters" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameterOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraintOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isNumeric" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinConstraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeficitVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SurplusVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinParameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }] };
+exports.RegisteredSpecification = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "RegisteredSpecification" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Specification" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "formulation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }] } }, { "kind": "FragmentSpread", "name": { "kind": "Name", "value": "SpecificationForOverview" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ShallowSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastUpdatedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "sharedVia" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "SpecificationForOverview" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Specification" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revno" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "description" } }, { "kind": "Field", "name": { "kind": "Name", "value": "tags" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ShallowSpecificationTag" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "definitions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDefinition" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "outline" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDefinition" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Definition" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "category" } }, { "kind": "Field", "name": { "kind": "Name", "value": "source" } }, { "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "description" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objective" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isMaximization" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isQuadratic" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "dimensions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimensionOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "variables" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariableOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameters" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameterOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraintOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isNumeric" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinConstraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeficitVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SurplusVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinParameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }] };
+exports.FullAttemptOptions = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullAttemptOptions" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "AttemptOptions" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "relativeGapThreshold" } }, { "kind": "Field", "name": { "kind": "Name", "value": "absoluteGapThreshold" } }, { "kind": "Field", "name": { "kind": "Name", "value": "solveTimeoutMillis" } }, { "kind": "Field", "name": { "kind": "Name", "value": "primalValueEpsilon" } }, { "kind": "Field", "name": { "kind": "Name", "value": "pinnedVariableLabels" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relaxation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objectiveWeight" } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "penalty" } }] } }] } }] } }] };
+exports.StartedAttempt = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "StartedAttempt" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Attempt" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "uuid" } }, { "kind": "Field", "name": { "kind": "Name", "value": "startedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "pristineSpecification" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revno" } }, { "kind": "Field", "name": { "kind": "Name", "value": "formulation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "name" } }] } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "outline" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "options" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullAttemptOptions" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objective" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isMaximization" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isQuadratic" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "dimensions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimensionOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "variables" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariableOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameters" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameterOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraintOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isNumeric" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinConstraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeficitVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SurplusVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinParameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullAttemptOptions" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "AttemptOptions" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "relativeGapThreshold" } }, { "kind": "Field", "name": { "kind": "Name", "value": "absoluteGapThreshold" } }, { "kind": "Field", "name": { "kind": "Name", "value": "solveTimeoutMillis" } }, { "kind": "Field", "name": { "kind": "Name", "value": "primalValueEpsilon" } }, { "kind": "Field", "name": { "kind": "Name", "value": "pinnedVariableLabels" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relaxation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objectiveWeight" } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "penalty" } }] } }] } }] } }] };
+exports.SharedSpecificationTag = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "SharedSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ShallowSpecificationTag" } }, { "kind": "Field", "name": { "kind": "Name", "value": "specification" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revno" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ShallowSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastUpdatedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "sharedVia" } }] } }] };
+exports.UnsharedFormulation = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "UnsharedFormulation" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Formulation" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }, { "kind": "Field", "alias": { "kind": "Name", "value": "sharedTags" }, "name": { "kind": "Name", "value": "tags" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "first" }, "value": { "kind": "IntValue", "value": "3" } }, { "kind": "Argument", "name": { "kind": "Name", "value": "filter" }, "value": { "kind": "ObjectValue", "fields": [{ "kind": "ObjectField", "name": { "kind": "Name", "value": "isShared" }, "value": { "kind": "BooleanValue", "value": true } }] } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "edges" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "node" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ShallowSpecificationTag" } }, { "kind": "Field", "name": { "kind": "Name", "value": "specification" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revno" } }] } }] } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "totalCount" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ShallowSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastUpdatedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "sharedVia" } }] } }] };
+exports.UpdatedFormulation = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "UpdatedFormulation" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Formulation" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "defaultTagName" } }] } }] };
+exports.FullSourcePosition = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourcePosition" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourcePosition" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "offset" } }, { "kind": "Field", "name": { "kind": "Name", "value": "line" } }, { "kind": "Field", "name": { "kind": "Name", "value": "column" } }] } }] };
+exports.FullSourceRange = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceRange" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceRange" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "start" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourcePosition" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "end" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourcePosition" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourcePosition" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourcePosition" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "offset" } }, { "kind": "Field", "name": { "kind": "Name", "value": "line" } }, { "kind": "Field", "name": { "kind": "Name", "value": "column" } }] } }] };
+exports.ExtractedSourceSlice = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ExtractedSourceSlice" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceSlice" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "Field", "name": { "kind": "Name", "value": "index" } }, { "kind": "Field", "name": { "kind": "Name", "value": "range" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceRange" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ValidSourceSlice" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "definition" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDefinition" } }] } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "InvalidSourceSlice" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "errorMessage" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceRange" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceRange" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "start" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourcePosition" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "end" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourcePosition" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourcePosition" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourcePosition" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "offset" } }, { "kind": "Field", "name": { "kind": "Name", "value": "line" } }, { "kind": "Field", "name": { "kind": "Name", "value": "column" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDefinition" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Definition" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "category" } }, { "kind": "Field", "name": { "kind": "Name", "value": "source" } }, { "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "description" } }] } }] };
+exports.FullDimension = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimension" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Dimension" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "items" } }] } }] };
+exports.FullParameter = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameter" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Parameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "defaultValue" } }, { "kind": "Field", "name": { "kind": "Name", "value": "entries" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "key" } }, { "kind": "Field", "name": { "kind": "Name", "value": "value" } }] } }] } }] };
+exports.FetchedAttemptInputs = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FetchedAttemptInputs" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Attempt" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimension" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameters" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameter" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimension" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Dimension" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "items" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameter" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Parameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "defaultValue" } }, { "kind": "Field", "name": { "kind": "Name", "value": "entries" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "key" } }, { "kind": "Field", "name": { "kind": "Name", "value": "value" } }] } }] } }] };
+exports.FullResult = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullResult" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Result" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "entries" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "key" } }, { "kind": "Field", "name": { "kind": "Name", "value": "value" } }, { "kind": "Field", "name": { "kind": "Name", "value": "dualValue" } }] } }] } }] };
+exports.FullVariable = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariable" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Variable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullResult" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullResult" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Result" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "entries" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "key" } }, { "kind": "Field", "name": { "kind": "Name", "value": "value" } }, { "kind": "Field", "name": { "kind": "Name", "value": "dualValue" } }] } }] } }] };
+exports.FullConstraint = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraint" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Constraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullResult" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullResult" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Result" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "entries" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "key" } }, { "kind": "Field", "name": { "kind": "Name", "value": "value" } }, { "kind": "Field", "name": { "kind": "Name", "value": "dualValue" } }] } }] } }] };
+exports.FetchedAttemptOutputs = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FetchedAttemptOutputs" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FeasibleOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variables" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariable" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraint" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullResult" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Result" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "entries" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "key" } }, { "kind": "Field", "name": { "kind": "Name", "value": "value" } }, { "kind": "Field", "name": { "kind": "Name", "value": "dualValue" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraint" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Constraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullResult" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariable" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Variable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullResult" } }] } }] };
+exports.FullDimensionSummary = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionSummary" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionSummary" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "itemCount" } }] } }] };
+exports.FullValueProfile = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullValueProfile" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ValueProfile" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "count" } }, { "kind": "Field", "name": { "kind": "Name", "value": "min" } }, { "kind": "Field", "name": { "kind": "Name", "value": "max" } }, { "kind": "Field", "name": { "kind": "Name", "value": "mean" } }, { "kind": "Field", "name": { "kind": "Name", "value": "stddev" } }, { "kind": "Field", "name": { "kind": "Name", "value": "buckets" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "left" } }, { "kind": "Field", "name": { "kind": "Name", "value": "right" } }, { "kind": "Field", "name": { "kind": "Name", "value": "count" } }] } }] } }] };
+exports.FullParameterSummary = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterSummary" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterSummary" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "domainMultiplicity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "entryProfile" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullValueProfile" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "entryDensity" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullValueProfile" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ValueProfile" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "count" } }, { "kind": "Field", "name": { "kind": "Name", "value": "min" } }, { "kind": "Field", "name": { "kind": "Name", "value": "max" } }, { "kind": "Field", "name": { "kind": "Name", "value": "mean" } }, { "kind": "Field", "name": { "kind": "Name", "value": "stddev" } }, { "kind": "Field", "name": { "kind": "Name", "value": "buckets" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "left" } }, { "kind": "Field", "name": { "kind": "Name", "value": "right" } }, { "kind": "Field", "name": { "kind": "Name", "value": "count" } }] } }] } }] };
+exports.FullConstraintSummary = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintSummary" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintSummary" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "reifiedIn" } }, { "kind": "Field", "name": { "kind": "Name", "value": "domainMultiplicity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "coefficientMultiplicity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "rowCount" } }, { "kind": "Field", "name": { "kind": "Name", "value": "rowDensity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "columnCount" } }, { "kind": "Field", "name": { "kind": "Name", "value": "columnDensity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "weightProfile" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullValueProfile" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "weightDensity" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullValueProfile" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ValueProfile" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "count" } }, { "kind": "Field", "name": { "kind": "Name", "value": "min" } }, { "kind": "Field", "name": { "kind": "Name", "value": "max" } }, { "kind": "Field", "name": { "kind": "Name", "value": "mean" } }, { "kind": "Field", "name": { "kind": "Name", "value": "stddev" } }, { "kind": "Field", "name": { "kind": "Name", "value": "buckets" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "left" } }, { "kind": "Field", "name": { "kind": "Name", "value": "right" } }, { "kind": "Field", "name": { "kind": "Name", "value": "count" } }] } }] } }] };
+exports.FullVariableSummary = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableSummary" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableSummary" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "domainMultiplicity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "columnCount" } }, { "kind": "Field", "name": { "kind": "Name", "value": "columnDensity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "resultProfile" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullValueProfile" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "resultDensity" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullValueProfile" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ValueProfile" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "count" } }, { "kind": "Field", "name": { "kind": "Name", "value": "min" } }, { "kind": "Field", "name": { "kind": "Name", "value": "max" } }, { "kind": "Field", "name": { "kind": "Name", "value": "mean" } }, { "kind": "Field", "name": { "kind": "Name", "value": "stddev" } }, { "kind": "Field", "name": { "kind": "Name", "value": "buckets" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "left" } }, { "kind": "Field", "name": { "kind": "Name", "value": "right" } }, { "kind": "Field", "name": { "kind": "Name", "value": "count" } }] } }] } }] };
+exports.FullObjectiveSummary = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullObjectiveSummary" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ObjectiveSummary" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "reifiedIn" } }, { "kind": "Field", "name": { "kind": "Name", "value": "coefficientMultiplicity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "weightProfile" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullValueProfile" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "weightDensity" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullValueProfile" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ValueProfile" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "count" } }, { "kind": "Field", "name": { "kind": "Name", "value": "min" } }, { "kind": "Field", "name": { "kind": "Name", "value": "max" } }, { "kind": "Field", "name": { "kind": "Name", "value": "mean" } }, { "kind": "Field", "name": { "kind": "Name", "value": "stddev" } }, { "kind": "Field", "name": { "kind": "Name", "value": "buckets" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "left" } }, { "kind": "Field", "name": { "kind": "Name", "value": "right" } }, { "kind": "Field", "name": { "kind": "Name", "value": "count" } }] } }] } }] };
+exports.FetchedAttemptSummaries = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FetchedAttemptSummaries" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Attempt" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionSummaries" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimensionSummary" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameterSummaries" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameterSummary" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraintSummaries" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraintSummary" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "variableSummaries" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariableSummary" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "objectiveSummary" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullObjectiveSummary" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionSummary" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionSummary" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "itemCount" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterSummary" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterSummary" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "domainMultiplicity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "entryProfile" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullValueProfile" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "entryDensity" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintSummary" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintSummary" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "reifiedIn" } }, { "kind": "Field", "name": { "kind": "Name", "value": "domainMultiplicity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "coefficientMultiplicity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "rowCount" } }, { "kind": "Field", "name": { "kind": "Name", "value": "rowDensity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "columnCount" } }, { "kind": "Field", "name": { "kind": "Name", "value": "columnDensity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "weightProfile" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullValueProfile" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "weightDensity" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableSummary" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableSummary" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "domainMultiplicity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "columnCount" } }, { "kind": "Field", "name": { "kind": "Name", "value": "columnDensity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "resultProfile" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullValueProfile" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "resultDensity" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullObjectiveSummary" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ObjectiveSummary" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "reifiedIn" } }, { "kind": "Field", "name": { "kind": "Name", "value": "coefficientMultiplicity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "weightProfile" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullValueProfile" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "weightDensity" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullValueProfile" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ValueProfile" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "count" } }, { "kind": "Field", "name": { "kind": "Name", "value": "min" } }, { "kind": "Field", "name": { "kind": "Name", "value": "max" } }, { "kind": "Field", "name": { "kind": "Name", "value": "mean" } }, { "kind": "Field", "name": { "kind": "Name", "value": "stddev" } }, { "kind": "Field", "name": { "kind": "Name", "value": "buckets" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "left" } }, { "kind": "Field", "name": { "kind": "Name", "value": "right" } }, { "kind": "Field", "name": { "kind": "Name", "value": "count" } }] } }] } }] };
+exports.FullAttemptNotification = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullAttemptNotification" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "AttemptNotification" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "effectiveAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relativeGap" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lpIterationCount" } }, { "kind": "Field", "name": { "kind": "Name", "value": "cutCount" } }] } }] };
+exports.FetchedAttemptOutcome = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FetchedAttemptOutcome" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FailedOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "failure" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FeasibleOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isOptimal" } }, { "kind": "Field", "name": { "kind": "Name", "value": "objectiveValue" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relativeGap" } }] } }] } }] };
+exports.FetchedAttempt = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FetchedAttempt" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Attempt" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "Field", "name": { "kind": "Name", "value": "uuid" } }, { "kind": "Field", "name": { "kind": "Name", "value": "pristineSpecification" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revno" } }, { "kind": "Field", "name": { "kind": "Name", "value": "formulation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "tags" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ShallowSpecificationTag" } }] } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "specificationTagName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outline" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "startedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "dequeuedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "endedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "status" } }, { "kind": "Field", "name": { "kind": "Name", "value": "notifications" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "last" }, "value": { "kind": "IntValue", "value": "100" } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "edges" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "node" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullAttemptNotification" } }] } }] } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "options" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullAttemptOptions" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "inputBytes" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outputBytes" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outcome" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FetchedAttemptOutcome" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ShallowSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastUpdatedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "sharedVia" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objective" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isMaximization" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isQuadratic" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "dimensions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimensionOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "variables" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariableOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameters" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameterOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraintOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isNumeric" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinConstraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeficitVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SurplusVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinParameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullAttemptNotification" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "AttemptNotification" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "effectiveAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relativeGap" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lpIterationCount" } }, { "kind": "Field", "name": { "kind": "Name", "value": "cutCount" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullAttemptOptions" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "AttemptOptions" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "relativeGapThreshold" } }, { "kind": "Field", "name": { "kind": "Name", "value": "absoluteGapThreshold" } }, { "kind": "Field", "name": { "kind": "Name", "value": "solveTimeoutMillis" } }, { "kind": "Field", "name": { "kind": "Name", "value": "primalValueEpsilon" } }, { "kind": "Field", "name": { "kind": "Name", "value": "pinnedVariableLabels" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relaxation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objectiveWeight" } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "penalty" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FetchedAttemptOutcome" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FailedOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "failure" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FeasibleOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isOptimal" } }, { "kind": "Field", "name": { "kind": "Name", "value": "objectiveValue" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relativeGap" } }] } }] } }] };
+exports.FetchedFormulation = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FetchedFormulation" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Formulation" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastSpecifiedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "defaultTagName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "specifications" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "last" }, "value": { "kind": "IntValue", "value": "0" } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "totalCount" } }] } }, { "kind": "Field", "alias": { "kind": "Name", "value": "sharedTags" }, "name": { "kind": "Name", "value": "tags" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "first" }, "value": { "kind": "IntValue", "value": "0" } }, { "kind": "Argument", "name": { "kind": "Name", "value": "filter" }, "value": { "kind": "ObjectValue", "fields": [{ "kind": "ObjectField", "name": { "kind": "Name", "value": "isShared" }, "value": { "kind": "BooleanValue", "value": true } }] } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "totalCount" } }] } }] } }] };
+exports.MyAccount = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "MyAccount" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Account" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "holder" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Member" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "email" } }] } }] } }] } }] };
+exports.FetchedOutlineFormulation = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FetchedOutlineFormulation" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Formulation" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "tag" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "name" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "tagName" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "specification" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revno" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outline" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullOutline" } }] } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objective" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isMaximization" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isQuadratic" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "dimensions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimensionOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "variables" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariableOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameters" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameterOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraintOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isNumeric" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinConstraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeficitVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SurplusVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinParameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }] };
+exports.FetchedSpecificationTag = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FetchedSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ShallowSpecificationTag" } }, { "kind": "Field", "name": { "kind": "Name", "value": "specification" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "SpecificationForOverview" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ShallowSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastUpdatedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "sharedVia" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "SpecificationForOverview" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Specification" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revno" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "description" } }, { "kind": "Field", "name": { "kind": "Name", "value": "tags" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ShallowSpecificationTag" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "definitions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDefinition" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "outline" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDefinition" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Definition" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "category" } }, { "kind": "Field", "name": { "kind": "Name", "value": "source" } }, { "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "description" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objective" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isMaximization" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isQuadratic" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "dimensions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimensionOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "variables" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariableOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameters" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameterOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraintOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isNumeric" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinConstraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeficitVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SurplusVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinParameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }] };
+exports.FetchedSpecificationTagFormulation = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FetchedSpecificationTagFormulation" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Formulation" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "tag" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "name" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "name" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FetchedSpecificationTag" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ShallowSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastUpdatedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "sharedVia" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "SpecificationForOverview" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Specification" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revno" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "description" } }, { "kind": "Field", "name": { "kind": "Name", "value": "tags" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ShallowSpecificationTag" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "definitions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDefinition" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "outline" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDefinition" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Definition" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "category" } }, { "kind": "Field", "name": { "kind": "Name", "value": "source" } }, { "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "description" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objective" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isMaximization" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isQuadratic" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "dimensions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimensionOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "variables" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariableOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameters" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameterOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraintOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isNumeric" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinConstraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeficitVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SurplusVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinParameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FetchedSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ShallowSpecificationTag" } }, { "kind": "Field", "name": { "kind": "Name", "value": "specification" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "SpecificationForOverview" } }] } }] } }] };
+exports.FetchedSpecificationFormulation = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FetchedSpecificationFormulation" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Formulation" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "specification" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "revno" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "revno" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "SpecificationForOverview" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ShallowSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastUpdatedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "sharedVia" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "SpecificationForOverview" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Specification" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revno" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "description" } }, { "kind": "Field", "name": { "kind": "Name", "value": "tags" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ShallowSpecificationTag" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "definitions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDefinition" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "outline" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDefinition" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Definition" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "category" } }, { "kind": "Field", "name": { "kind": "Name", "value": "source" } }, { "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "description" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objective" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isMaximization" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isQuadratic" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "dimensions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimensionOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "variables" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariableOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameters" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameterOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraintOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isNumeric" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinConstraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeficitVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SurplusVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinParameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }] };
+exports.ListedAuthorization = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ListedAuthorization" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Authorization" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastUsedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "tokenSuffix" } }] } }] };
+exports.UnspecifiedAttemptForRow = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "UnspecifiedAttemptForRow" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Attempt" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "Field", "name": { "kind": "Name", "value": "uuid" } }, { "kind": "Field", "name": { "kind": "Name", "value": "specificationTagName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "startedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "dequeuedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "endedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outline" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "options" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullAttemptOptions" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "status" } }, { "kind": "Field", "name": { "kind": "Name", "value": "inputBytes" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outputBytes" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outcome" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FailedOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "failure" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FeasibleOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isOptimal" } }, { "kind": "Field", "name": { "kind": "Name", "value": "objectiveValue" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relativeGap" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objective" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isMaximization" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isQuadratic" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "dimensions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimensionOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "variables" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariableOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameters" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameterOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraintOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isNumeric" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinConstraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeficitVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SurplusVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinParameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullAttemptOptions" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "AttemptOptions" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "relativeGapThreshold" } }, { "kind": "Field", "name": { "kind": "Name", "value": "absoluteGapThreshold" } }, { "kind": "Field", "name": { "kind": "Name", "value": "solveTimeoutMillis" } }, { "kind": "Field", "name": { "kind": "Name", "value": "primalValueEpsilon" } }, { "kind": "Field", "name": { "kind": "Name", "value": "pinnedVariableLabels" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relaxation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objectiveWeight" } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "penalty" } }] } }] } }] } }] };
+exports.PaginatedAttempt = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "PaginatedAttempt" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Attempt" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "UnspecifiedAttemptForRow" } }, { "kind": "Field", "name": { "kind": "Name", "value": "pristineSpecification" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revno" } }, { "kind": "Field", "name": { "kind": "Name", "value": "formulation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "UnspecifiedAttemptForRow" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Attempt" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "Field", "name": { "kind": "Name", "value": "uuid" } }, { "kind": "Field", "name": { "kind": "Name", "value": "specificationTagName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "startedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "dequeuedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "endedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outline" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "options" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullAttemptOptions" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "status" } }, { "kind": "Field", "name": { "kind": "Name", "value": "inputBytes" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outputBytes" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outcome" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FailedOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "failure" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FeasibleOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isOptimal" } }, { "kind": "Field", "name": { "kind": "Name", "value": "objectiveValue" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relativeGap" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objective" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isMaximization" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isQuadratic" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "dimensions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimensionOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "variables" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariableOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameters" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameterOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraintOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isNumeric" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinConstraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeficitVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SurplusVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinParameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullAttemptOptions" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "AttemptOptions" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "relativeGapThreshold" } }, { "kind": "Field", "name": { "kind": "Name", "value": "absoluteGapThreshold" } }, { "kind": "Field", "name": { "kind": "Name", "value": "solveTimeoutMillis" } }, { "kind": "Field", "name": { "kind": "Name", "value": "primalValueEpsilon" } }, { "kind": "Field", "name": { "kind": "Name", "value": "pinnedVariableLabels" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relaxation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objectiveWeight" } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "penalty" } }] } }] } }] } }] };
+exports.PaginatedFormulationAttempt = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "PaginatedFormulationAttempt" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Attempt" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "UnspecifiedAttemptForRow" } }, { "kind": "Field", "name": { "kind": "Name", "value": "pristineSpecification" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "Field", "name": { "kind": "Name", "value": "revno" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "UnspecifiedAttemptForRow" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Attempt" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "Field", "name": { "kind": "Name", "value": "uuid" } }, { "kind": "Field", "name": { "kind": "Name", "value": "specificationTagName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "startedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "dequeuedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "endedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outline" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "options" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullAttemptOptions" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "status" } }, { "kind": "Field", "name": { "kind": "Name", "value": "inputBytes" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outputBytes" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outcome" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FailedOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "failure" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FeasibleOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isOptimal" } }, { "kind": "Field", "name": { "kind": "Name", "value": "objectiveValue" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relativeGap" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objective" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isMaximization" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isQuadratic" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "dimensions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimensionOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "variables" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariableOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameters" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameterOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraintOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isNumeric" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinConstraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeficitVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SurplusVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinParameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullAttemptOptions" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "AttemptOptions" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "relativeGapThreshold" } }, { "kind": "Field", "name": { "kind": "Name", "value": "absoluteGapThreshold" } }, { "kind": "Field", "name": { "kind": "Name", "value": "solveTimeoutMillis" } }, { "kind": "Field", "name": { "kind": "Name", "value": "primalValueEpsilon" } }, { "kind": "Field", "name": { "kind": "Name", "value": "pinnedVariableLabels" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relaxation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objectiveWeight" } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "penalty" } }] } }] } }] } }] };
+exports.PaginatedFormulationSpecification = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "PaginatedFormulationSpecification" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Specification" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "Field", "name": { "kind": "Name", "value": "revno" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "tags" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ShallowSpecificationTag" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ShallowSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastUpdatedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "sharedVia" } }] } }] };
+exports.PaginatedFormulation = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "PaginatedFormulation" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Formulation" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastSpecifiedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "specifications" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "last" }, "value": { "kind": "IntValue", "value": "0" } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "totalCount" } }] } }] } }] };
+exports.PaginatedSharedTag = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "PaginatedSharedTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ShallowSpecificationTag" } }, { "kind": "Field", "name": { "kind": "Name", "value": "specification" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "Field", "name": { "kind": "Name", "value": "revno" } }, { "kind": "Field", "name": { "kind": "Name", "value": "formulation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ShallowSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastUpdatedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "sharedVia" } }] } }] };
+exports.PolledAttemptOutcome = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "PolledAttemptOutcome" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FailedOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "failure" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FeasibleOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isOptimal" } }, { "kind": "Field", "name": { "kind": "Name", "value": "objectiveValue" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relativeGap" } }] } }] } }] };
+exports.PolledAttempt = { "kind": "Document", "definitions": [{ "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "PolledAttempt" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Attempt" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "uuid" } }, { "kind": "Field", "name": { "kind": "Name", "value": "status" } }, { "kind": "Field", "name": { "kind": "Name", "value": "startedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "dequeuedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "endedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "notifications" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "last" }, "value": { "kind": "IntValue", "value": "1" } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "edges" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "node" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullAttemptNotification" } }] } }] } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "outcome" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "PolledAttemptOutcome" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullAttemptNotification" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "AttemptNotification" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "effectiveAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relativeGap" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lpIterationCount" } }, { "kind": "Field", "name": { "kind": "Name", "value": "cutCount" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "PolledAttemptOutcome" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FailedOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "failure" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FeasibleOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isOptimal" } }, { "kind": "Field", "name": { "kind": "Name", "value": "objectiveValue" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relativeGap" } }] } }] } }] };
+exports.CancelAttempt = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "mutation", "name": { "kind": "Name", "value": "CancelAttempt" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "uuid" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Uuid" } } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "cancelAttempt" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "uuid" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "uuid" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "CancelledAttempt" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "CancelledAttempt" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Attempt" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "uuid" } }, { "kind": "Field", "name": { "kind": "Name", "value": "startedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "dequeuedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "endedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "pristineSpecification" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revno" } }, { "kind": "Field", "name": { "kind": "Name", "value": "formulation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }] } }] } }] } }] };
+exports.DeleteFormulation = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "mutation", "name": { "kind": "Name", "value": "DeleteFormulation" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "name" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "FormulationName" } } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "deleteFormulation" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "name" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "name" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "DeletedFormulation" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "DeletedFormulation" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeleteFormulationOutput" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "specificationCount" } }, { "kind": "Field", "name": { "kind": "Name", "value": "attemptCount" } }] } }] };
+exports.GenerateAuthorization = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "mutation", "name": { "kind": "Name", "value": "GenerateAuthorization" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "input" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "GenerateAuthorizationInput" } } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "generateAuthorization" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "input" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "input" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "token" } }] } }] } }] };
+exports.RegisterSpecification = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "mutation", "name": { "kind": "Name", "value": "RegisterSpecification" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "input" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "RegisterSpecificationInput" } } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "registerSpecification" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "input" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "input" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "RegisteredSpecification" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ShallowSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastUpdatedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "sharedVia" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "SpecificationForOverview" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Specification" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revno" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "description" } }, { "kind": "Field", "name": { "kind": "Name", "value": "tags" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ShallowSpecificationTag" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "definitions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDefinition" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "outline" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDefinition" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Definition" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "category" } }, { "kind": "Field", "name": { "kind": "Name", "value": "source" } }, { "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "description" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objective" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isMaximization" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isQuadratic" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "dimensions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimensionOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "variables" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariableOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameters" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameterOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraintOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isNumeric" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinConstraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeficitVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SurplusVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinParameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "RegisteredSpecification" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Specification" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "formulation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }] } }, { "kind": "FragmentSpread", "name": { "kind": "Name", "value": "SpecificationForOverview" } }] } }] };
+exports.RevokeAuthorization = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "mutation", "name": { "kind": "Name", "value": "RevokeAuthorization" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "name" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "AuthorizationName" } } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revokeAuthorization" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "input" }, "value": { "kind": "ObjectValue", "fields": [{ "kind": "ObjectField", "name": { "kind": "Name", "value": "name" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "name" } } }] } }] }] } }] };
+exports.StartAttempt = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "mutation", "name": { "kind": "Name", "value": "StartAttempt" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "input" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "AttemptInput" } } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "startAttempt" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "input" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "input" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "StartedAttempt" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objective" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isMaximization" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isQuadratic" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "dimensions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimensionOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "variables" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariableOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameters" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameterOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraintOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isNumeric" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinConstraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeficitVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SurplusVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinParameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullAttemptOptions" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "AttemptOptions" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "relativeGapThreshold" } }, { "kind": "Field", "name": { "kind": "Name", "value": "absoluteGapThreshold" } }, { "kind": "Field", "name": { "kind": "Name", "value": "solveTimeoutMillis" } }, { "kind": "Field", "name": { "kind": "Name", "value": "primalValueEpsilon" } }, { "kind": "Field", "name": { "kind": "Name", "value": "pinnedVariableLabels" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relaxation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objectiveWeight" } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "penalty" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "StartedAttempt" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Attempt" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "uuid" } }, { "kind": "Field", "name": { "kind": "Name", "value": "startedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "pristineSpecification" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revno" } }, { "kind": "Field", "name": { "kind": "Name", "value": "formulation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "name" } }] } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "outline" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "options" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullAttemptOptions" } }] } }] } }] };
+exports.StartSharingFormulation = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "mutation", "name": { "kind": "Name", "value": "StartSharingFormulation" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "input" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "StartSharingFormulationInput" } } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "startSharingFormulation" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "input" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "input" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "SharedSpecificationTag" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ShallowSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastUpdatedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "sharedVia" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "SharedSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ShallowSpecificationTag" } }, { "kind": "Field", "name": { "kind": "Name", "value": "specification" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revno" } }] } }] } }] };
+exports.StopSharingFormulation = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "mutation", "name": { "kind": "Name", "value": "StopSharingFormulation" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "input" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "StopSharingFormulationInput" } } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "stopSharingFormulation" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "input" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "input" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "UnsharedFormulation" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ShallowSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastUpdatedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "sharedVia" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "UnsharedFormulation" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Formulation" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }, { "kind": "Field", "alias": { "kind": "Name", "value": "sharedTags" }, "name": { "kind": "Name", "value": "tags" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "first" }, "value": { "kind": "IntValue", "value": "3" } }, { "kind": "Argument", "name": { "kind": "Name", "value": "filter" }, "value": { "kind": "ObjectValue", "fields": [{ "kind": "ObjectField", "name": { "kind": "Name", "value": "isShared" }, "value": { "kind": "BooleanValue", "value": true } }] } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "edges" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "node" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ShallowSpecificationTag" } }, { "kind": "Field", "name": { "kind": "Name", "value": "specification" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revno" } }] } }] } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "totalCount" } }] } }] } }] };
+exports.UpdateFormulation = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "mutation", "name": { "kind": "Name", "value": "UpdateFormulation" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "input" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "UpdateFormulationInput" } } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "updateFormulation" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "input" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "input" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "UpdatedFormulation" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "UpdatedFormulation" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Formulation" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "defaultTagName" } }] } }] };
+exports.ValidateDefinitions = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "query", "name": { "kind": "Name", "value": "ValidateDefinitions" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "definitions" } }, "type": { "kind": "NonNullType", "type": { "kind": "ListType", "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "DefinitionInput" } } } } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "validateDefinitions" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "definitions" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "definitions" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "warnings" } }] } }] } }] };
+exports.ExtractDefinitions = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "query", "name": { "kind": "Name", "value": "ExtractDefinitions" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "sources" } }, "type": { "kind": "NonNullType", "type": { "kind": "ListType", "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Source" } } } } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "extractDefinitions" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "sources" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "sources" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "slices" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ExtractedSourceSlice" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceRange" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceRange" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "start" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourcePosition" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "end" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourcePosition" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourcePosition" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourcePosition" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "offset" } }, { "kind": "Field", "name": { "kind": "Name", "value": "line" } }, { "kind": "Field", "name": { "kind": "Name", "value": "column" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDefinition" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Definition" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "category" } }, { "kind": "Field", "name": { "kind": "Name", "value": "source" } }, { "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "description" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ExtractedSourceSlice" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceSlice" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "Field", "name": { "kind": "Name", "value": "index" } }, { "kind": "Field", "name": { "kind": "Name", "value": "range" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceRange" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ValidSourceSlice" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "definition" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDefinition" } }] } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "InvalidSourceSlice" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "errorMessage" } }] } }] } }] };
+exports.FetchAttemptInputs = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "query", "name": { "kind": "Name", "value": "FetchAttemptInputs" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "uuid" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Uuid" } } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "attempt" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "uuid" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "uuid" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FetchedAttemptInputs" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimension" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Dimension" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "items" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameter" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Parameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "defaultValue" } }, { "kind": "Field", "name": { "kind": "Name", "value": "entries" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "key" } }, { "kind": "Field", "name": { "kind": "Name", "value": "value" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FetchedAttemptInputs" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Attempt" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimension" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameters" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameter" } }] } }] } }] };
+exports.FetchAttemptOutputs = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "query", "name": { "kind": "Name", "value": "FetchAttemptOutputs" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "uuid" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Uuid" } } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "attempt" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "uuid" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "uuid" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "outcome" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FeasibleOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FetchedAttemptOutputs" } }] } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullResult" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Result" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "entries" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "key" } }, { "kind": "Field", "name": { "kind": "Name", "value": "value" } }, { "kind": "Field", "name": { "kind": "Name", "value": "dualValue" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraint" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Constraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullResult" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariable" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Variable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullResult" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FetchedAttemptOutputs" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FeasibleOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variables" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariable" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraint" } }] } }] } }] };
+exports.FetchAttemptSummaries = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "query", "name": { "kind": "Name", "value": "FetchAttemptSummaries" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "uuid" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Uuid" } } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "attempt" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "uuid" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "uuid" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FetchedAttemptSummaries" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionSummary" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionSummary" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "itemCount" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterSummary" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterSummary" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "domainMultiplicity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "entryProfile" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullValueProfile" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "entryDensity" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintSummary" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintSummary" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "reifiedIn" } }, { "kind": "Field", "name": { "kind": "Name", "value": "domainMultiplicity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "coefficientMultiplicity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "rowCount" } }, { "kind": "Field", "name": { "kind": "Name", "value": "rowDensity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "columnCount" } }, { "kind": "Field", "name": { "kind": "Name", "value": "columnDensity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "weightProfile" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullValueProfile" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "weightDensity" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableSummary" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableSummary" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "domainMultiplicity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "columnCount" } }, { "kind": "Field", "name": { "kind": "Name", "value": "columnDensity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "resultProfile" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullValueProfile" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "resultDensity" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullObjectiveSummary" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ObjectiveSummary" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "reifiedIn" } }, { "kind": "Field", "name": { "kind": "Name", "value": "coefficientMultiplicity" } }, { "kind": "Field", "name": { "kind": "Name", "value": "weightProfile" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullValueProfile" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "weightDensity" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullValueProfile" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ValueProfile" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "count" } }, { "kind": "Field", "name": { "kind": "Name", "value": "min" } }, { "kind": "Field", "name": { "kind": "Name", "value": "max" } }, { "kind": "Field", "name": { "kind": "Name", "value": "mean" } }, { "kind": "Field", "name": { "kind": "Name", "value": "stddev" } }, { "kind": "Field", "name": { "kind": "Name", "value": "buckets" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "left" } }, { "kind": "Field", "name": { "kind": "Name", "value": "right" } }, { "kind": "Field", "name": { "kind": "Name", "value": "count" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FetchedAttemptSummaries" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Attempt" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionSummaries" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimensionSummary" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameterSummaries" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameterSummary" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraintSummaries" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraintSummary" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "variableSummaries" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariableSummary" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "objectiveSummary" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullObjectiveSummary" } }] } }] } }] };
+exports.FetchAttempt = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "query", "name": { "kind": "Name", "value": "FetchAttempt" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "uuid" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Uuid" } } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "attempt" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "uuid" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "uuid" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FetchedAttempt" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ShallowSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastUpdatedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "sharedVia" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objective" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isMaximization" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isQuadratic" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "dimensions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimensionOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "variables" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariableOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameters" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameterOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraintOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isNumeric" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinConstraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeficitVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SurplusVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinParameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullAttemptNotification" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "AttemptNotification" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "effectiveAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relativeGap" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lpIterationCount" } }, { "kind": "Field", "name": { "kind": "Name", "value": "cutCount" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullAttemptOptions" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "AttemptOptions" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "relativeGapThreshold" } }, { "kind": "Field", "name": { "kind": "Name", "value": "absoluteGapThreshold" } }, { "kind": "Field", "name": { "kind": "Name", "value": "solveTimeoutMillis" } }, { "kind": "Field", "name": { "kind": "Name", "value": "primalValueEpsilon" } }, { "kind": "Field", "name": { "kind": "Name", "value": "pinnedVariableLabels" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relaxation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objectiveWeight" } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "penalty" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FetchedAttempt" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Attempt" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "Field", "name": { "kind": "Name", "value": "uuid" } }, { "kind": "Field", "name": { "kind": "Name", "value": "pristineSpecification" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revno" } }, { "kind": "Field", "name": { "kind": "Name", "value": "formulation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "tags" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ShallowSpecificationTag" } }] } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "specificationTagName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outline" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "startedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "dequeuedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "endedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "status" } }, { "kind": "Field", "name": { "kind": "Name", "value": "notifications" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "last" }, "value": { "kind": "IntValue", "value": "100" } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "edges" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "node" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullAttemptNotification" } }] } }] } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "options" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullAttemptOptions" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "inputBytes" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outputBytes" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outcome" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FetchedAttemptOutcome" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FetchedAttemptOutcome" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FailedOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "failure" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FeasibleOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isOptimal" } }, { "kind": "Field", "name": { "kind": "Name", "value": "objectiveValue" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relativeGap" } }] } }] } }] };
+exports.FetchFormulation = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "query", "name": { "kind": "Name", "value": "FetchFormulation" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "name" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "FormulationName" } } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "formulation" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "name" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "name" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FetchedFormulation" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "attempts" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "last" }, "value": { "kind": "IntValue", "value": "1" } }, { "kind": "Argument", "name": { "kind": "Name", "value": "filter" }, "value": { "kind": "ObjectValue", "fields": [{ "kind": "ObjectField", "name": { "kind": "Name", "value": "formulationName" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "name" } } }] } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "edges" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "node" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "startedAt" } }] } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "totalCount" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FetchedFormulation" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Formulation" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastSpecifiedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "defaultTagName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "specifications" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "last" }, "value": { "kind": "IntValue", "value": "0" } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "totalCount" } }] } }, { "kind": "Field", "alias": { "kind": "Name", "value": "sharedTags" }, "name": { "kind": "Name", "value": "tags" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "first" }, "value": { "kind": "IntValue", "value": "0" } }, { "kind": "Argument", "name": { "kind": "Name", "value": "filter" }, "value": { "kind": "ObjectValue", "fields": [{ "kind": "ObjectField", "name": { "kind": "Name", "value": "isShared" }, "value": { "kind": "BooleanValue", "value": true } }] } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "totalCount" } }] } }] } }] };
+exports.FetchMyAccount = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "query", "name": { "kind": "Name", "value": "FetchMyAccount" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "me" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "FragmentSpread", "name": { "kind": "Name", "value": "MyAccount" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "MyAccount" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Account" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "holder" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Member" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "email" } }] } }] } }] } }] };
+exports.FetchOutline = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "query", "name": { "kind": "Name", "value": "FetchOutline" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "formulationName" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "FormulationName" } } } }, { "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "tagName" } }, "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "TagName" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "formulation" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "name" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "formulationName" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FetchedOutlineFormulation" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objective" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isMaximization" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isQuadratic" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "dimensions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimensionOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "variables" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariableOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameters" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameterOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraintOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isNumeric" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinConstraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeficitVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SurplusVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinParameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FetchedOutlineFormulation" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Formulation" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "tag" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "name" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "tagName" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "specification" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revno" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outline" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullOutline" } }] } }] } }] } }] } }] };
+exports.FetchSpecificationTag = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "query", "name": { "kind": "Name", "value": "FetchSpecificationTag" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "formulationName" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "FormulationName" } } } }, { "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "name" } }, "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "TagName" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "formulation" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "name" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "formulationName" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FetchedSpecificationTagFormulation" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ShallowSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastUpdatedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "sharedVia" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "SpecificationForOverview" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Specification" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revno" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "description" } }, { "kind": "Field", "name": { "kind": "Name", "value": "tags" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ShallowSpecificationTag" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "definitions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDefinition" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "outline" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDefinition" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Definition" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "category" } }, { "kind": "Field", "name": { "kind": "Name", "value": "source" } }, { "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "description" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objective" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isMaximization" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isQuadratic" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "dimensions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimensionOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "variables" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariableOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameters" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameterOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraintOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isNumeric" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinConstraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeficitVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SurplusVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinParameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FetchedSpecificationTagFormulation" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Formulation" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "tag" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "name" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "name" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FetchedSpecificationTag" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FetchedSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ShallowSpecificationTag" } }, { "kind": "Field", "name": { "kind": "Name", "value": "specification" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "SpecificationForOverview" } }] } }] } }] };
+exports.FetchSpecification = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "query", "name": { "kind": "Name", "value": "FetchSpecification" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "formulationName" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "FormulationName" } } } }, { "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "revno" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Int" } } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "formulation" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "name" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "formulationName" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FetchedSpecificationFormulation" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ShallowSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastUpdatedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "sharedVia" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "SpecificationForOverview" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Specification" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revno" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "description" } }, { "kind": "Field", "name": { "kind": "Name", "value": "tags" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ShallowSpecificationTag" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "definitions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDefinition" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "outline" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDefinition" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Definition" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "category" } }, { "kind": "Field", "name": { "kind": "Name", "value": "source" } }, { "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "description" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objective" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isMaximization" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isQuadratic" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "dimensions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimensionOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "variables" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariableOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameters" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameterOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraintOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isNumeric" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinConstraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeficitVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SurplusVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinParameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FetchedSpecificationFormulation" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Formulation" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "specification" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "revno" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "revno" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "SpecificationForOverview" } }] } }] } }] };
+exports.ListMyAuthorizations = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "query", "name": { "kind": "Name", "value": "ListMyAuthorizations" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "me" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "holder" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Member" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "authorizations" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ListedAuthorization" } }] } }] } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ListedAuthorization" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Authorization" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastUsedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "tokenSuffix" } }] } }] };
+exports.PaginateAttemptNotifications = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "query", "name": { "kind": "Name", "value": "PaginateAttemptNotifications" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "uuid" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Uuid" } } } }, { "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "last" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "AttemptNotificationLimit" } } } }, { "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "before" } }, "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Cursor" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "attempt" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "uuid" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "uuid" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "notifications" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "last" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "last" } } }, { "kind": "Argument", "name": { "kind": "Name", "value": "before" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "before" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "edges" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "node" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullAttemptNotification" } }] } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "pageInfo" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullPageInfo" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "totalCount" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullAttemptNotification" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "AttemptNotification" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "effectiveAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relativeGap" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lpIterationCount" } }, { "kind": "Field", "name": { "kind": "Name", "value": "cutCount" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullPageInfo" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PageInfo" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "startCursor" } }, { "kind": "Field", "name": { "kind": "Name", "value": "endCursor" } }, { "kind": "Field", "name": { "kind": "Name", "value": "hasPreviousPage" } }, { "kind": "Field", "name": { "kind": "Name", "value": "hasNextPage" } }] } }] };
+exports.PaginateAttempts = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "query", "name": { "kind": "Name", "value": "PaginateAttempts" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "first" } }, "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "AttemptLimit" } } }, { "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "after" } }, "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Cursor" } } }, { "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "last" } }, "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "AttemptLimit" } } }, { "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "before" } }, "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Cursor" } } }, { "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "filter" } }, "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "AttemptFilter" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "attempts" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "first" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "first" } } }, { "kind": "Argument", "name": { "kind": "Name", "value": "after" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "after" } } }, { "kind": "Argument", "name": { "kind": "Name", "value": "last" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "last" } } }, { "kind": "Argument", "name": { "kind": "Name", "value": "before" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "before" } } }, { "kind": "Argument", "name": { "kind": "Name", "value": "filter" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "filter" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "edges" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "node" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "PaginatedAttempt" } }] } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "pageInfo" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullPageInfo" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "totalCount" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "UnspecifiedAttemptForRow" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Attempt" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "Field", "name": { "kind": "Name", "value": "uuid" } }, { "kind": "Field", "name": { "kind": "Name", "value": "specificationTagName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "startedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "dequeuedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "endedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outline" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "options" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullAttemptOptions" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "status" } }, { "kind": "Field", "name": { "kind": "Name", "value": "inputBytes" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outputBytes" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outcome" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FailedOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "failure" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FeasibleOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isOptimal" } }, { "kind": "Field", "name": { "kind": "Name", "value": "objectiveValue" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relativeGap" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objective" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isMaximization" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isQuadratic" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "dimensions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimensionOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "variables" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariableOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameters" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameterOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraintOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isNumeric" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinConstraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeficitVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SurplusVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinParameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullAttemptOptions" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "AttemptOptions" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "relativeGapThreshold" } }, { "kind": "Field", "name": { "kind": "Name", "value": "absoluteGapThreshold" } }, { "kind": "Field", "name": { "kind": "Name", "value": "solveTimeoutMillis" } }, { "kind": "Field", "name": { "kind": "Name", "value": "primalValueEpsilon" } }, { "kind": "Field", "name": { "kind": "Name", "value": "pinnedVariableLabels" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relaxation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objectiveWeight" } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "penalty" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullPageInfo" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PageInfo" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "startCursor" } }, { "kind": "Field", "name": { "kind": "Name", "value": "endCursor" } }, { "kind": "Field", "name": { "kind": "Name", "value": "hasPreviousPage" } }, { "kind": "Field", "name": { "kind": "Name", "value": "hasNextPage" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "PaginatedAttempt" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Attempt" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "UnspecifiedAttemptForRow" } }, { "kind": "Field", "name": { "kind": "Name", "value": "pristineSpecification" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "revno" } }, { "kind": "Field", "name": { "kind": "Name", "value": "formulation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }] } }] } }] } }] };
+exports.PaginateFormulationAttempts = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "query", "name": { "kind": "Name", "value": "PaginateFormulationAttempts" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "formulationName" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "FormulationName" } } } }, { "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "last" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "AttemptLimit" } } } }, { "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "before" } }, "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Cursor" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "attempts" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "last" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "last" } } }, { "kind": "Argument", "name": { "kind": "Name", "value": "before" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "before" } } }, { "kind": "Argument", "name": { "kind": "Name", "value": "filter" }, "value": { "kind": "ObjectValue", "fields": [{ "kind": "ObjectField", "name": { "kind": "Name", "value": "formulationName" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "formulationName" } } }] } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "edges" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "node" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "PaginatedFormulationAttempt" } }] } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "pageInfo" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "startCursor" } }, { "kind": "Field", "name": { "kind": "Name", "value": "hasPreviousPage" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "totalCount" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "UnspecifiedAttemptForRow" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Attempt" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "Field", "name": { "kind": "Name", "value": "uuid" } }, { "kind": "Field", "name": { "kind": "Name", "value": "specificationTagName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "startedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "dequeuedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "endedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outline" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "options" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullAttemptOptions" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "status" } }, { "kind": "Field", "name": { "kind": "Name", "value": "inputBytes" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outputBytes" } }, { "kind": "Field", "name": { "kind": "Name", "value": "outcome" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FailedOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "failure" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FeasibleOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isOptimal" } }, { "kind": "Field", "name": { "kind": "Name", "value": "objectiveValue" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relativeGap" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objective" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isMaximization" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isQuadratic" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "dimensions" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullDimensionOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "variables" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullVariableOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "parameters" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullParameterOutline" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullConstraintOutline" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullDimensionOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DimensionOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isNumeric" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullConstraintOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ConstraintOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinConstraint" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullVariableOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "VariableOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "DeficitVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SurplusVariable" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "constraintLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullParameterOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "ParameterOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullTensorOutline" } }, { "kind": "Field", "name": { "kind": "Name", "value": "derivation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PinParameter" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "variableLabel" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullTensorOutline" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "TensorOutline" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lowerBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "upperBound" } }, { "kind": "Field", "name": { "kind": "Name", "value": "isIntegral" } }, { "kind": "Field", "name": { "kind": "Name", "value": "bindings" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullSourceBinding" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullSourceBinding" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SourceBinding" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "dimensionLabel" } }, { "kind": "Field", "name": { "kind": "Name", "value": "qualifier" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullAttemptOptions" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "AttemptOptions" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "relativeGapThreshold" } }, { "kind": "Field", "name": { "kind": "Name", "value": "absoluteGapThreshold" } }, { "kind": "Field", "name": { "kind": "Name", "value": "solveTimeoutMillis" } }, { "kind": "Field", "name": { "kind": "Name", "value": "primalValueEpsilon" } }, { "kind": "Field", "name": { "kind": "Name", "value": "pinnedVariableLabels" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relaxation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "objectiveWeight" } }, { "kind": "Field", "name": { "kind": "Name", "value": "constraints" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "label" } }, { "kind": "Field", "name": { "kind": "Name", "value": "penalty" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "PaginatedFormulationAttempt" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Attempt" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "UnspecifiedAttemptForRow" } }, { "kind": "Field", "name": { "kind": "Name", "value": "pristineSpecification" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "Field", "name": { "kind": "Name", "value": "revno" } }] } }] } }] };
+exports.PaginateFormulationSpecifications = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "query", "name": { "kind": "Name", "value": "PaginateFormulationSpecifications" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "formulationName" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "FormulationName" } } } }, { "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "first" } }, "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Limit" } } }, { "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "after" } }, "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Cursor" } } }, { "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "last" } }, "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Limit" } } }, { "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "before" } }, "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Cursor" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "formulation" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "name" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "formulationName" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "specifications" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "first" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "first" } } }, { "kind": "Argument", "name": { "kind": "Name", "value": "after" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "after" } } }, { "kind": "Argument", "name": { "kind": "Name", "value": "last" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "last" } } }, { "kind": "Argument", "name": { "kind": "Name", "value": "before" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "before" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "edges" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "node" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "PaginatedFormulationSpecification" } }] } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "pageInfo" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullPageInfo" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "totalCount" } }] } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ShallowSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastUpdatedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "sharedVia" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullPageInfo" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PageInfo" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "startCursor" } }, { "kind": "Field", "name": { "kind": "Name", "value": "endCursor" } }, { "kind": "Field", "name": { "kind": "Name", "value": "hasPreviousPage" } }, { "kind": "Field", "name": { "kind": "Name", "value": "hasNextPage" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "PaginatedFormulationSpecification" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Specification" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "Field", "name": { "kind": "Name", "value": "revno" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "expiresAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "tags" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ShallowSpecificationTag" } }] } }] } }] };
+exports.PaginateFormulations = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "query", "name": { "kind": "Name", "value": "PaginateFormulations" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "first" } }, "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Limit" } } }, { "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "after" } }, "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Cursor" } } }, { "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "last" } }, "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Limit" } } }, { "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "before" } }, "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Cursor" } } }, { "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "filter" } }, "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "FormulationFilter" } } }, { "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "orderBy" } }, "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "FormulationOrderBy" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "formulations" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "first" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "first" } } }, { "kind": "Argument", "name": { "kind": "Name", "value": "after" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "after" } } }, { "kind": "Argument", "name": { "kind": "Name", "value": "last" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "last" } } }, { "kind": "Argument", "name": { "kind": "Name", "value": "before" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "before" } } }, { "kind": "Argument", "name": { "kind": "Name", "value": "filter" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "filter" } } }, { "kind": "Argument", "name": { "kind": "Name", "value": "orderBy" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "orderBy" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "edges" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "node" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "PaginatedFormulation" } }] } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "pageInfo" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullPageInfo" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "totalCount" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullPageInfo" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "PageInfo" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "startCursor" } }, { "kind": "Field", "name": { "kind": "Name", "value": "endCursor" } }, { "kind": "Field", "name": { "kind": "Name", "value": "hasPreviousPage" } }, { "kind": "Field", "name": { "kind": "Name", "value": "hasNextPage" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "PaginatedFormulation" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Formulation" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastSpecifiedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "specifications" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "last" }, "value": { "kind": "IntValue", "value": "0" } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "totalCount" } }] } }] } }] };
+exports.PaginateSharedSpecificationTags = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "query", "name": { "kind": "Name", "value": "PaginateSharedSpecificationTags" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "last" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Limit" } } } }, { "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "before" } }, "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Cursor" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "sharedSpecificationTags" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "last" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "last" } } }, { "kind": "Argument", "name": { "kind": "Name", "value": "before" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "before" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "edges" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "node" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "PaginatedSharedTag" } }] } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "pageInfo" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "startCursor" } }, { "kind": "Field", "name": { "kind": "Name", "value": "hasPreviousPage" } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "totalCount" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "ShallowSpecificationTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "createdAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lastUpdatedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "sharedVia" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "PaginatedSharedTag" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "SpecificationTag" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "FragmentSpread", "name": { "kind": "Name", "value": "ShallowSpecificationTag" } }, { "kind": "Field", "name": { "kind": "Name", "value": "specification" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "Field", "name": { "kind": "Name", "value": "revno" } }, { "kind": "Field", "name": { "kind": "Name", "value": "formulation" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "id" } }, { "kind": "Field", "name": { "kind": "Name", "value": "name" } }, { "kind": "Field", "name": { "kind": "Name", "value": "displayName" } }] } }] } }] } }] };
+exports.PollAttempt = { "kind": "Document", "definitions": [{ "kind": "OperationDefinition", "operation": "query", "name": { "kind": "Name", "value": "PollAttempt" }, "variableDefinitions": [{ "kind": "VariableDefinition", "variable": { "kind": "Variable", "name": { "kind": "Name", "value": "uuid" } }, "type": { "kind": "NonNullType", "type": { "kind": "NamedType", "name": { "kind": "Name", "value": "Uuid" } } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "attempt" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "uuid" }, "value": { "kind": "Variable", "name": { "kind": "Name", "value": "uuid" } } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "PolledAttempt" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "FullAttemptNotification" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "AttemptNotification" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "effectiveAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relativeGap" } }, { "kind": "Field", "name": { "kind": "Name", "value": "lpIterationCount" } }, { "kind": "Field", "name": { "kind": "Name", "value": "cutCount" } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "PolledAttempt" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Attempt" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "uuid" } }, { "kind": "Field", "name": { "kind": "Name", "value": "status" } }, { "kind": "Field", "name": { "kind": "Name", "value": "startedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "dequeuedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "endedAt" } }, { "kind": "Field", "name": { "kind": "Name", "value": "notifications" }, "arguments": [{ "kind": "Argument", "name": { "kind": "Name", "value": "last" }, "value": { "kind": "IntValue", "value": "1" } }], "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "edges" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "node" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "FullAttemptNotification" } }] } }] } }] } }, { "kind": "Field", "name": { "kind": "Name", "value": "outcome" }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "FragmentSpread", "name": { "kind": "Name", "value": "PolledAttemptOutcome" } }] } }] } }, { "kind": "FragmentDefinition", "name": { "kind": "Name", "value": "PolledAttemptOutcome" }, "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "Outcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "__typename" } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FailedOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "failure" } }] } }, { "kind": "InlineFragment", "typeCondition": { "kind": "NamedType", "name": { "kind": "Name", "value": "FeasibleOutcome" } }, "selectionSet": { "kind": "SelectionSet", "selections": [{ "kind": "Field", "name": { "kind": "Name", "value": "isOptimal" } }, { "kind": "Field", "name": { "kind": "Name", "value": "objectiveValue" } }, { "kind": "Field", "name": { "kind": "Name", "value": "relativeGap" } }] } }] } }] };
+
+
+/***/ }),
+
+/***/ 8658:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with this
+ * work for additional information regarding copyright ownership.  The ASF
+ * licenses this file to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+var __exportStar = (this && this.__exportStar) || function(m, exports) {
+    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.operations = void 0;
+const documents = __importStar(__nccwpck_require__(8008));
+__exportStar(__nccwpck_require__(9619), exports);
+exports.operations = (() => {
+    const ops = new Map();
+    for (const val of Object.values(documents)) {
+        const doc = val;
+        for (const def of doc.definitions) {
+            if (def.kind === 'OperationDefinition' && def.name) {
+                ops.set(def.name.value, doc);
+            }
+        }
+    }
+    return ops;
+})();
+
+
+/***/ }),
+
+/***/ 1966:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getSdk = void 0;
+function getSdk(requester) {
+    return {
+        CancelAttempt(variables, options) {
+            return requester("@CancelAttempt", variables, options);
+        },
+        DeleteFormulation(variables, options) {
+            return requester("@DeleteFormulation", variables, options);
+        },
+        GenerateAuthorization(variables, options) {
+            return requester("@GenerateAuthorization", variables, options);
+        },
+        RegisterSpecification(variables, options) {
+            return requester("@RegisterSpecification", variables, options);
+        },
+        RevokeAuthorization(variables, options) {
+            return requester("@RevokeAuthorization", variables, options);
+        },
+        StartAttempt(variables, options) {
+            return requester("@StartAttempt", variables, options);
+        },
+        StartSharingFormulation(variables, options) {
+            return requester("@StartSharingFormulation", variables, options);
+        },
+        StopSharingFormulation(variables, options) {
+            return requester("@StopSharingFormulation", variables, options);
+        },
+        UpdateFormulation(variables, options) {
+            return requester("@UpdateFormulation", variables, options);
+        },
+        ValidateDefinitions(variables, options) {
+            return requester("@ValidateDefinitions", variables, options);
+        },
+        ExtractDefinitions(variables, options) {
+            return requester("@ExtractDefinitions", variables, options);
+        },
+        FetchAttemptInputs(variables, options) {
+            return requester("@FetchAttemptInputs", variables, options);
+        },
+        FetchAttemptOutputs(variables, options) {
+            return requester("@FetchAttemptOutputs", variables, options);
+        },
+        FetchAttemptSummaries(variables, options) {
+            return requester("@FetchAttemptSummaries", variables, options);
+        },
+        FetchAttempt(variables, options) {
+            return requester("@FetchAttempt", variables, options);
+        },
+        FetchFormulation(variables, options) {
+            return requester("@FetchFormulation", variables, options);
+        },
+        FetchMyAccount(variables, options) {
+            return requester("@FetchMyAccount", variables, options);
+        },
+        FetchOutline(variables, options) {
+            return requester("@FetchOutline", variables, options);
+        },
+        FetchSpecificationTag(variables, options) {
+            return requester("@FetchSpecificationTag", variables, options);
+        },
+        FetchSpecification(variables, options) {
+            return requester("@FetchSpecification", variables, options);
+        },
+        ListMyAuthorizations(variables, options) {
+            return requester("@ListMyAuthorizations", variables, options);
+        },
+        PaginateAttemptNotifications(variables, options) {
+            return requester("@PaginateAttemptNotifications", variables, options);
+        },
+        PaginateAttempts(variables, options) {
+            return requester("@PaginateAttempts", variables, options);
+        },
+        PaginateFormulationAttempts(variables, options) {
+            return requester("@PaginateFormulationAttempts", variables, options);
+        },
+        PaginateFormulationSpecifications(variables, options) {
+            return requester("@PaginateFormulationSpecifications", variables, options);
+        },
+        PaginateFormulations(variables, options) {
+            return requester("@PaginateFormulations", variables, options);
+        },
+        PaginateSharedSpecificationTags(variables, options) {
+            return requester("@PaginateSharedSpecificationTags", variables, options);
+        },
+        PollAttempt(variables, options) {
+            return requester("@PollAttempt", variables, options);
+        }
+    };
+}
+exports.getSdk = getSdk;
+
+
+/***/ }),
+
+/***/ 9619:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with this
+ * work for additional information regarding copyright ownership.  The ASF
+ * licenses this file to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __exportStar = (this && this.__exportStar) || function(m, exports) {
+    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getSyncSdk = void 0;
+const sdk_gen_1 = __nccwpck_require__(1966);
+__exportStar(__nccwpck_require__(1966), exports);
+/** Generates a synchronous SDK, useful for example in Google Apps Scripts. */
+function getSyncSdk(requester) {
+    return (0, sdk_gen_1.getSdk)(requester);
+}
+exports.getSyncSdk = getSyncSdk;
+
+
+/***/ }),
+
+/***/ 3249:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.collectErrorCodes = exports.rethrowWithStatus = exports.findErrorWithCode = exports.findError = exports.setCauseExtractors = exports.statusErrorCauseExtractor = exports.errorCauseExtractor = exports.ErrorFinder = void 0;
+const factories_1 = __nccwpck_require__(845);
+const status_1 = __nccwpck_require__(6011);
+class ErrorFinder {
+    constructor(extractors) {
+        this.extractors = [...extractors];
+    }
+    /** DFS on causes. */
+    *walk(err) {
+        yield err;
+        for (const fn of this.extractors) {
+            const causes = fn(err);
+            if (causes) {
+                for (const cause of causes) {
+                    yield* this.walk(cause);
+                }
+                return;
+            }
+        }
+    }
+    find(root, fn) {
+        if (!root) {
+            return undefined;
+        }
+        const seen = new WeakSet();
+        for (const cause of this.walk(root)) {
+            if (cause && typeof cause == 'object') {
+                if (seen.has(cause)) {
+                    // Circular reference.
+                    continue;
+                }
+                seen.add(cause);
+            }
+            const val = fn(cause);
+            if (val !== undefined) {
+                return { value: val, error: cause };
+            }
+        }
+        return undefined;
+    }
+}
+exports.ErrorFinder = ErrorFinder;
+function errorCauseExtractor(err) {
+    if (!(0, factories_1.isStandardError)(err)) {
+        return undefined;
+    }
+    const { cause } = err;
+    return cause === undefined
+        ? undefined
+        : Array.isArray(cause)
+            ? cause
+            : [cause];
+}
+exports.errorCauseExtractor = errorCauseExtractor;
+function statusErrorCauseExtractor(err) {
+    return (0, status_1.isStatusError)(err) ? [err.contents] : undefined;
+}
+exports.statusErrorCauseExtractor = statusErrorCauseExtractor;
+let globalFinder = new ErrorFinder([
+    errorCauseExtractor,
+    statusErrorCauseExtractor,
+]);
+/**
+ * Resets the list of global extractors used by `findError` and similar methods.
+ * The default finder contains only the `libraryCauseExtractor`. This function
+ * returns the previous extractors so that they can be restored.
+ */
+function setCauseExtractors(newExtractors) {
+    const oldExtractors = globalFinder.extractors;
+    globalFinder = new ErrorFinder(newExtractors);
+    return oldExtractors;
+}
+exports.setCauseExtractors = setCauseExtractors;
+/** Finds an error using the current list of global extractors. */
+function findError(root, fn) {
+    return globalFinder.find(root, fn);
+}
+exports.findError = findError;
+function findErrorWithCode(root, code) {
+    return findError(root, (err) => {
+        const errCode = (0, factories_1.errorCode)(err);
+        const ok = typeof code == 'string' ? errCode === code : code.has(errCode);
+        return ok ? errCode : undefined;
+    });
+}
+exports.findErrorWithCode = findErrorWithCode;
+/**
+ * Wraps and rethrows an (internal) error with the status specified in the input
+ * mapping. If the error is not an internal one or doesn't match, this method
+ * rethrows the original error. Note that this method does not walk the error's
+ * causal chain to avoid swallowing downstream errors.
+ */
+function rethrowWithStatus(err, mapping) {
+    if (!(0, factories_1.isStandardError)(err)) {
+        throw err;
+    }
+    for (const [status, val] of Object.entries(mapping)) {
+        if (!(0, status_1.isErrorStatus)(status)) {
+            throw factories_1.errors.illegal({ message: 'Invalid status: ' + status });
+        }
+        const codes = typeof val == 'string' ? [val] : val;
+        for (const code of codes) {
+            if (code === err.code) {
+                throw (0, status_1.statusError)(status, err);
+            }
+        }
+    }
+    throw err;
+}
+exports.rethrowWithStatus = rethrowWithStatus;
+/**
+ * Returns a set with all error codes explicitly found in an error's causal
+ * chain. Note that unlike with `errorCode`, implicit `ERR_INTERNAL` codes are
+ * not added here.
+ */
+function collectErrorCodes(root) {
+    const codes = new Set();
+    findError(root, (err) => {
+        if ((0, factories_1.isStandardError)(err)) {
+            codes.add(err.code);
+        }
+    });
+    return codes;
+}
+exports.collectErrorCodes = collectErrorCodes;
+
+
+/***/ }),
+
+/***/ 3475:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.format = void 0;
+function format(fmt, ...args) {
+    const formatPattern = /(%?)(%([jds]))/g;
+    if (args.length) {
+        fmt = fmt.replace(formatPattern, (match, esc, _ptn, flag) => {
+            let arg = args.shift();
+            switch (flag) {
+                case 's':
+                    arg = '' + arg;
+                    break;
+                case 'd':
+                    arg = Number(arg);
+                    break;
+                case 'j':
+                    arg = JSON.stringify(arg);
+                    break;
+            }
+            if (!esc) {
+                return arg;
+            }
+            args.unshift(arg);
+            return match;
+        });
+    }
+    if (args.length) {
+        fmt += ' ' + args.join(' ');
+    }
+    fmt = fmt.replace(/%{2,2}/g, '%');
+    return '' + fmt;
+}
+exports.format = format;
+
+
+/***/ }),
+
+/***/ 845:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+var _a;
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.errorCodes = exports.errors = exports.errorFactories = exports.mergeErrorCodes = exports.newError = exports.errorMessage = exports.errorCode = exports.isStandardError = void 0;
+const change_case_1 = __nccwpck_require__(9091);
+const upper_case_first_1 = __nccwpck_require__(6256);
+const standardErrorSymbol = Symbol.for('@opvious/stl:StandardError');
+function isStandardError(arg, code) {
+    const err = arg;
+    if (!err?.[standardErrorSymbol]) {
+        return false;
+    }
+    if (!code) {
+        return true;
+    }
+    return typeof code == 'string' ? code === err.code : code.has(err.code);
+}
+exports.isStandardError = isStandardError;
+/**
+ * Returns an error's code if it is a standard error and `ERR_INTERNAL`
+ * otherwise.
+ */
+function errorCode(err) {
+    return (isStandardError(err) && err.code) || exports.errorCodes.Internal;
+}
+exports.errorCode = errorCode;
+/**
+ * Returns the error message of a standard error, the message property of other
+ * objects, the input if it is a string, and nothing otherwise.
+ */
+function errorMessage(err) {
+    if (typeof err == 'string') {
+        return err;
+    }
+    if (!err || typeof err != 'object') {
+        return undefined;
+    }
+    return '' + err.message;
+}
+exports.errorMessage = errorMessage;
+function newError(name, code, opts) {
+    return new RealStandardError(name, code, opts);
+}
+exports.newError = newError;
+/** Base class for standard errors. */
+class RealStandardError extends Error {
+    constructor(name, code, opts) {
+        assertUndefined(codeValidationError(code));
+        const msg = opts?.message;
+        const limit = Error.stackTraceLimit;
+        if (opts?.stackFrom === false) {
+            Error.stackTraceLimit = 0;
+        }
+        try {
+            super(msg);
+        }
+        finally {
+            Error.stackTraceLimit = limit;
+        }
+        if (typeof Error.captureStackTrace == 'function' &&
+            typeof opts?.stackFrom == 'function') {
+            Error.captureStackTrace(this, opts?.stackFrom);
+        }
+        Object.defineProperty(this, standardErrorSymbol, { value: true });
+        if (name) {
+            // Non-enumerable name.
+            Object.defineProperty(this, 'name', { value: name });
+        }
+        this.code = code;
+        this.tags = opts?.tags ?? {};
+        let cause;
+        if (opts && Array.isArray(opts.cause)) {
+            const errs = opts.cause.filter((e) => e);
+            cause = errs.length <= 1 ? errs[0] : errs;
+        }
+        else {
+            cause = opts?.cause;
+        }
+        if (cause) {
+            this.cause = cause;
+        }
+    }
+    toJSON() {
+        return {
+            code: this.code,
+            message: this.message ? this.message : undefined,
+            tags: Object.keys(this.tags).length ? this.tags : undefined,
+        };
+    }
+}
+const CODE_PREFIX = 'ERR_';
+function codeValidationError(s) {
+    if (s === CODE_PREFIX) {
+        return new Error('Empty error code suffix');
+    }
+    if (!s.startsWith(CODE_PREFIX)) {
+        return new Error('Invalid error code prefix: ' + s);
+    }
+    return suffixValidationError(s.substring(CODE_PREFIX.length));
+}
+const partPattern = /^[A-Z][A-Z0-9]*$/;
+const PART_SEPARATOR = '_';
+function suffixValidationError(s) {
+    const parts = s.split(PART_SEPARATOR);
+    if (!parts.length) {
+        return new Error('Empty error suffix');
+    }
+    for (const part of parts) {
+        if (!partPattern.test(part)) {
+            return new Error('Invalid error suffix: ' + s);
+        }
+    }
+    return undefined;
+}
+function assertUndefined(err) {
+    if (err) {
+        throw err;
+    }
+}
+/** Combines error codes into a single object. */
+function mergeErrorCodes(obj) {
+    const codes = new Set();
+    walk(obj, codes, [codes]);
+    return codes;
+    function walk(src, dst, sets) {
+        for (const [key, val] of Object.entries(src)) {
+            if (typeof val == 'string' || val instanceof Set) {
+                for (const v of typeof val == 'string' ? [val] : val.values()) {
+                    assertUnique(v);
+                    for (const s of sets) {
+                        s.add(v);
+                    }
+                }
+                dst[key] = val;
+            }
+            else {
+                const nested = new Set();
+                walk(val, nested, [...sets, nested]);
+                dst[key] = nested;
+            }
+        }
+    }
+    function assertUnique(code) {
+        if (codes.has(code)) {
+            throw exports.errors.illegal({ message: 'Duplicate error code: ' + code });
+        }
+    }
+}
+exports.mergeErrorCodes = mergeErrorCodes;
+/**
+ * Generates an object containing error factory methods for each of the input
+ * codes. This is particularly useful to concisely generate strongly-typed error
+ * creation methods and tagged codes.
+ */
+function errorFactories(params) {
+    const { definitions } = params;
+    const prefix = params.prefix ?? CODE_PREFIX;
+    const codes = new Set();
+    const factories = Object.create(null);
+    for (const [key, val] of Object.entries(definitions)) {
+        const code = prefix + (0, change_case_1.constantCase)(key);
+        assertUndefined(codeValidationError(code));
+        const name = params.name ?? inferName(prefix);
+        codes[(0, upper_case_first_1.upperCaseFirst)(key)] = code;
+        codes.add(code);
+        // eslint-disable-next-line no-inner-declarations
+        function newError(...args) {
+            let opts;
+            if (typeof val == 'function') {
+                const ret = val(...args);
+                if (isStandardError(ret)) {
+                    return ret;
+                }
+                opts = { stackFrom: newError, ...ret };
+            }
+            else {
+                opts =
+                    typeof val == 'string'
+                        ? { stackFrom: newError, message: val }
+                        : { stackFrom: newError, ...val };
+                const arg = args[0];
+                if (arg !== undefined) {
+                    Object.assign(opts, arg);
+                }
+            }
+            return new RealStandardError(name, code, opts);
+        }
+        factories[key] = newError;
+    }
+    return [factories, codes];
+}
+exports.errorFactories = errorFactories;
+const DEFAULT_NAME = 'StandardError';
+function inferName(p) {
+    const s = p.substring(CODE_PREFIX.length);
+    return s ? (0, change_case_1.pascalCase)(s) + 'Error' : DEFAULT_NAME;
+}
+/** Standard error factories. */
+_a = errorFactories({
+    definitions: {
+        /** Generic internal error. */
+        internal: { message: 'Internal error' },
+        /** Generic illegal state error, used for assertions in particular. */
+        illegal: { message: 'Illegal state' },
+        /** Generic invalid argument error. */
+        invalid: { message: 'Invalid argument' },
+        /** Enforces that a value has type never. */
+        absurd: (val, arg) => {
+            const [msg, opts] = normalizeErrorArg(arg);
+            const message = 'Absurd value' + (msg ? ': ' + msg : '');
+            return { message, ...opts, tags: { value: val, ...opts?.tags } };
+        },
+        /** Marks a call-site as work in progress. */
+        todo: (...args) => ({ message: 'Not yet implemented', tags: { args } }),
+        /** Indicates that a code path should be unreachable. */
+        unreachable: (arg) => {
+            const [msg, opts] = normalizeErrorArg(arg);
+            return { message: 'Unexpected call: ' + (msg ?? 'unreachable'), ...opts };
+        },
+        /**
+         * Coerces non standard errors into one. The original value is available via
+         * its `cause` and its message as top-level message. If the input is already
+         * a standard error, it is returned unchanged.
+         */
+        coerced: (err) => isStandardError(err)
+            ? err
+            : { message: errorMessage(err), cause: err, stackFrom: false },
+    },
+}), exports.errors = _a[0], exports.errorCodes = _a[1];
+function normalizeErrorArg(arg) {
+    const msg = typeof arg == 'string' ? arg : undefined;
+    const opts = typeof arg == 'string' ? undefined : arg;
+    return [msg, opts ?? {}];
+}
+
+
+/***/ }),
+
+/***/ 1553:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.unimplemented = exports.fail = exports.validate = exports.findFailure = exports.findStatus = exports.check = exports.newChecker = exports.assertType = exports.assertCause = exports.assert = exports.statusToHttpCode = exports.statusToGrpcCode = exports.statusFromHttpCode = exports.statusFromGrpcCode = exports.statusErrors = exports.statusError = exports.isStatusError = exports.isServerProblem = exports.isErrorStatus = exports.newError = exports.mergeErrorCodes = exports.isStandardError = exports.errors = exports.errorMessage = exports.errorFactories = exports.errorCodes = exports.errorCode = exports.statusErrorCauseExtractor = exports.setCauseExtractors = exports.rethrowWithStatus = exports.findErrorWithCode = exports.findError = exports.errorCauseExtractor = exports.collectErrorCodes = void 0;
+const cause_1 = __nccwpck_require__(3249);
+const common_1 = __nccwpck_require__(3475);
+const factories_1 = __nccwpck_require__(845);
+const status_1 = __nccwpck_require__(6011);
+var cause_2 = __nccwpck_require__(3249);
+Object.defineProperty(exports, "collectErrorCodes", ({ enumerable: true, get: function () { return cause_2.collectErrorCodes; } }));
+Object.defineProperty(exports, "errorCauseExtractor", ({ enumerable: true, get: function () { return cause_2.errorCauseExtractor; } }));
+Object.defineProperty(exports, "findError", ({ enumerable: true, get: function () { return cause_2.findError; } }));
+Object.defineProperty(exports, "findErrorWithCode", ({ enumerable: true, get: function () { return cause_2.findErrorWithCode; } }));
+Object.defineProperty(exports, "rethrowWithStatus", ({ enumerable: true, get: function () { return cause_2.rethrowWithStatus; } }));
+Object.defineProperty(exports, "setCauseExtractors", ({ enumerable: true, get: function () { return cause_2.setCauseExtractors; } }));
+Object.defineProperty(exports, "statusErrorCauseExtractor", ({ enumerable: true, get: function () { return cause_2.statusErrorCauseExtractor; } }));
+var factories_2 = __nccwpck_require__(845);
+Object.defineProperty(exports, "errorCode", ({ enumerable: true, get: function () { return factories_2.errorCode; } }));
+Object.defineProperty(exports, "errorCodes", ({ enumerable: true, get: function () { return factories_2.errorCodes; } }));
+Object.defineProperty(exports, "errorFactories", ({ enumerable: true, get: function () { return factories_2.errorFactories; } }));
+Object.defineProperty(exports, "errorMessage", ({ enumerable: true, get: function () { return factories_2.errorMessage; } }));
+Object.defineProperty(exports, "errors", ({ enumerable: true, get: function () { return factories_2.errors; } }));
+Object.defineProperty(exports, "isStandardError", ({ enumerable: true, get: function () { return factories_2.isStandardError; } }));
+Object.defineProperty(exports, "mergeErrorCodes", ({ enumerable: true, get: function () { return factories_2.mergeErrorCodes; } }));
+Object.defineProperty(exports, "newError", ({ enumerable: true, get: function () { return factories_2.newError; } }));
+var status_2 = __nccwpck_require__(6011);
+Object.defineProperty(exports, "isErrorStatus", ({ enumerable: true, get: function () { return status_2.isErrorStatus; } }));
+Object.defineProperty(exports, "isServerProblem", ({ enumerable: true, get: function () { return status_2.isServerProblem; } }));
+Object.defineProperty(exports, "isStatusError", ({ enumerable: true, get: function () { return status_2.isStatusError; } }));
+Object.defineProperty(exports, "statusError", ({ enumerable: true, get: function () { return status_2.statusError; } }));
+Object.defineProperty(exports, "statusErrors", ({ enumerable: true, get: function () { return status_2.statusErrors; } }));
+Object.defineProperty(exports, "statusFromGrpcCode", ({ enumerable: true, get: function () { return status_2.statusFromGrpcCode; } }));
+Object.defineProperty(exports, "statusFromHttpCode", ({ enumerable: true, get: function () { return status_2.statusFromHttpCode; } }));
+Object.defineProperty(exports, "statusToGrpcCode", ({ enumerable: true, get: function () { return status_2.statusToGrpcCode; } }));
+Object.defineProperty(exports, "statusToHttpCode", ({ enumerable: true, get: function () { return status_2.statusToHttpCode; } }));
+// Assertions
+/** Asserts the input predicate, throwing `ERR_ILLEGAL` if not. */
+function assert(pred, fmt, ...args) {
+    if (pred) {
+        return;
+    }
+    throw factories_1.errors.illegal({
+        message: 'Assertion failed: ' + (0, common_1.format)(fmt, ...args),
+        stackFrom: assert,
+    });
+}
+exports.assert = assert;
+/** Asserts that an error matches a predicate. */
+function assertCause(pred, cause) {
+    if (pred) {
+        return;
+    }
+    throw factories_1.errors.illegal({
+        message: 'Cause assertion failed: ' + (0, factories_1.errorMessage)(cause),
+        cause,
+        stackFrom: assertCause,
+    });
+}
+exports.assertCause = assertCause;
+/** Asserts that the argument's `typeof` matches the given name. */
+function assertType(name, arg) {
+    assert(typeof arg == name, 'Expected type %s but got %j', name, arg);
+}
+exports.assertType = assertType;
+function newChecker(expected, pred) {
+    check.orAbsent = orAbsent;
+    return check;
+    function check(arg, caller) {
+        if (caller && (arg === null || arg === undefined)) {
+            return undefined;
+        }
+        assert(pred(arg), 'Expected %s but got %j', expected, arg);
+        return arg;
+    }
+    function orAbsent(arg) {
+        return check(arg, orAbsent);
+    }
+}
+exports.newChecker = newChecker;
+exports.check = {
+    isString: newChecker('a string', (a) => typeof a == 'string'),
+    isNumber: newChecker('a number', (a) => typeof a == 'number' && !isNaN(a)),
+    isNumeric: newChecker('a number', (a) => {
+        let n;
+        switch (typeof a) {
+            case 'number':
+                n = a;
+                break;
+            case 'string':
+                n = +a;
+                break;
+        }
+        return n != null && !isNaN(n);
+    }),
+    isInteger: newChecker('an integer', (a) => typeof a == 'number' && a === (a | 0)),
+    isNonNegativeInteger: newChecker('an integer', (a) => typeof a == 'number' && a === (a | 0) && a >= 0),
+    isBoolean: newChecker('a boolean', (a) => typeof a == 'boolean'),
+    isObject: newChecker('an object', (a) => a && typeof a === 'object'),
+    isRecord: newChecker('a record', (a) => a && typeof a === 'object' && !Array.isArray(a)),
+    isArray: newChecker('an array', (a) => Array.isArray(a)),
+    isBuffer: newChecker('a buffer', (a) => Buffer.isBuffer(a)),
+    /** Asserts that the input is not null or undefined and returns it. */
+    isPresent(arg) {
+        assert(arg != null, 'Absent value');
+        return arg;
+    },
+};
+// Failures
+/**
+ * Walks an error's causal chain to find the first status error and returns its
+ * status. If no match is found, returns `UNKNOWN`.
+ */
+function findStatus(err) {
+    const match = (0, cause_1.findError)(err, (e) => (0, status_1.isStatusError)(e) ? e.status : undefined);
+    return match?.value ?? 'UNKNOWN';
+}
+exports.findStatus = findStatus;
+/**
+ * Walks an error's causal chain to find the first status error and converts it
+ * to a failure. If none is found, converts the root error to a (minimal)
+ * failure.
+ */
+function findFailure(err) {
+    const match = (0, cause_1.findError)(err, (e) => (0, status_1.isStatusError)(e) ? (0, status_1.toFailure)(e) : undefined);
+    return match?.value ?? (0, status_1.toFailure)(err);
+}
+exports.findFailure = findFailure;
+function validate(pred, arg1, ...args) {
+    if (pred) {
+        return;
+    }
+    let fmt;
+    let opts;
+    if (typeof arg1 == 'string') {
+        opts = {};
+        fmt = arg1;
+    }
+    else {
+        opts = arg1;
+        fmt = args.shift();
+    }
+    const err = factories_1.errors.invalid({
+        ...opts,
+        message: fmt == null ? undefined : (0, common_1.format)(fmt, ...args),
+        stackFrom: validate,
+    });
+    throw status_1.statusErrors.invalidArgument(err);
+}
+exports.validate = validate;
+/** Throws `ERR_UNREACHABLE`. */
+function fail(arg) {
+    throw factories_1.errors.unreachable(arg);
+}
+exports.fail = fail;
+/** Throws `ERR_TODO` decorated with `UNIMPLEMENTED` status. */
+function unimplemented(...args) {
+    throw status_1.statusErrors.unimplemented(factories_1.errors.todo(...args));
+}
+exports.unimplemented = unimplemented;
+
+
+/***/ }),
+
+/***/ 6011:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.isServerProblem = exports.toFailure = exports.inferErrorStatus = exports.statusFromHttpCode = exports.statusToHttpCode = exports.statusFromGrpcCode = exports.statusToGrpcCode = exports.isStatusError = exports.statusErrors = exports.statusError = exports.isErrorStatus = void 0;
+const change_case_1 = __nccwpck_require__(9091);
+const factories_1 = __nccwpck_require__(845);
+// https://grpc.github.io/grpc/core/md_doc_statuscodes.html
+// https://cloud.yandex.com/en/docs/api-design-guide/concepts/errors
+const statuses = {
+    // Private statuses
+    /**
+     * Generic internal failure status. This status is used by default for
+     * standard errors which do not have one set explicitly. In general you
+     * shouldn't need to set it except when masking an existing status.
+     */
+    INTERNAL: { grpc: 13, http: 500, visibility: 'private' },
+    /** Status representing other errors. */
+    UNKNOWN: { grpc: 2, http: 500, visibility: 'private' },
+    // Public statuses
+    // Timing
+    /** The operation was cancelled, typically by the caller. */
+    CANCELLED: { grpc: 1, http: 499, visibility: 'public' },
+    /** The deadline expired before the operation could complete. */
+    DEADLINE_EXCEEDED: { grpc: 4, http: 504, visibility: 'public' },
+    // Permissions
+    /**
+     * The request does not have valid authentication credentials for the
+     * operation.
+     */
+    UNAUTHENTICATED: { grpc: 16, http: 401, visibility: 'public' },
+    /** The caller does not have permission to execute the specified operation. */
+    PERMISSION_DENIED: { grpc: 7, http: 403, visibility: 'public' },
+    // Availability
+    /** Some resource has been exhausted. */
+    RESOURCE_EXHAUSTED: { grpc: 8, http: 429, visibility: 'public' },
+    /** The service is currently unavailable. */
+    UNAVAILABLE: { grpc: 14, http: 503, visibility: 'public' },
+    // State
+    /**
+     * The operation was aborted, typically due to a concurrency issue such as a
+     * sequencer check failure or transaction abort.
+     */
+    ABORTED: { grpc: 10, http: 409, visibility: 'public' },
+    /**
+     * The entity that a client attempted to create (e.g., file or directory)
+     * already exists.
+     */
+    ALREADY_EXISTS: { grpc: 6, http: 409, visibility: 'public' },
+    /**
+     * The operation was rejected because the system is not in a state required
+     * for the operation's execution.
+     */
+    FAILED_PRECONDITION: { grpc: 9, http: 422, visibility: 'public' },
+    /** Some requested entity (e.g., file or directory) was not found. */
+    NOT_FOUND: { grpc: 5, http: 404, visibility: 'public' },
+    // Input
+    /** The client specified an invalid argument. */
+    INVALID_ARGUMENT: { grpc: 3, http: 400, visibility: 'public' },
+    // Other
+    /**
+     * The operation is not implemented or is not supported/enabled in this
+     * service.
+     */
+    UNIMPLEMENTED: { grpc: 12, http: 501, visibility: 'public' },
+    // TODO: Add data loss status?
+};
+const allStatuses = Object.keys(statuses);
+function isPrivate(s) {
+    return statuses[s].visibility === 'private';
+}
+function findContents(arg) {
+    let err = arg;
+    while (isStatusError(err)) {
+        err = err.contents;
+    }
+    return err;
+}
+function isErrorStatus(arg) {
+    return !!statuses[arg];
+}
+exports.isErrorStatus = isErrorStatus;
+const isStatusErrorSymbol = Symbol.for('@opvious/stl:isStatusError');
+class RealStatusError extends Error {
+    constructor(status, contents, stackFrom) {
+        super((0, change_case_1.sentenceCase)(status));
+        this.status = status;
+        this.contents = contents;
+        this.name = 'StatusError';
+        Object.defineProperty(this, isStatusErrorSymbol, { value: true });
+        if (typeof Error.captureStackTrace == 'function') {
+            Error.captureStackTrace(this, stackFrom);
+        }
+    }
+}
+function statusError(status, err) {
+    return new RealStatusError(status, err, statusError);
+}
+exports.statusError = statusError;
+exports.statusErrors = (() => {
+    const obj = Object.create(null);
+    for (const key of Object.keys(statuses)) {
+        const status = key;
+        if (status === 'UNKNOWN') {
+            continue;
+        }
+        // eslint-disable-next-line no-inner-declarations
+        function newError(err) {
+            return new RealStatusError(status, err, newError);
+        }
+        obj[(0, change_case_1.camelCase)(status)] = newError;
+    }
+    return obj;
+})();
+function isStatusError(err) {
+    return err && err[isStatusErrorSymbol];
+}
+exports.isStatusError = isStatusError;
+function statusToGrpcCode(status) {
+    return statuses[status].grpc;
+}
+exports.statusToGrpcCode = statusToGrpcCode;
+function statusFromGrpcCode(code) {
+    return allStatuses.find((s) => statuses[s].grpc === code) ?? 'UNKNOWN';
+}
+exports.statusFromGrpcCode = statusFromGrpcCode;
+function statusToHttpCode(status) {
+    return statuses[status].http;
+}
+exports.statusToHttpCode = statusToHttpCode;
+function statusFromHttpCode(code) {
+    return allStatuses.find((s) => statuses[s].http === code) ?? 'UNKNOWN';
+}
+exports.statusFromHttpCode = statusFromHttpCode;
+function inferErrorStatus(err) {
+    return isStatusError(err) ? err.status : 'UNKNOWN';
+}
+exports.inferErrorStatus = inferErrorStatus;
+const DEFAULT_FAILURE_MESSAGE = 'Unknown error';
+function defaultFailureMessage(code) {
+    return code ? `Error with code ${code}` : DEFAULT_FAILURE_MESSAGE;
+}
+/**
+ * Generates a new failure. Note that this operation is not idempotent: for
+ * security reasons any input which is not wrapped in a status error (which
+ * includes `Failure` instances) will be returned as a generic `INTERNAL` or
+ * `UNKNOWN` status failure.
+ */
+function toFailure(err) {
+    const status = inferErrorStatus(err);
+    const contents = isStatusError(err) && !isPrivate(status) ? findContents(err) : undefined;
+    const code = contents ? (0, factories_1.errorCode)(contents) : undefined;
+    const data = {
+        status,
+        message: defaultFailureMessage(code),
+    };
+    if (code) {
+        data.code = code;
+    }
+    if (!contents) {
+        return data;
+    }
+    if ((0, factories_1.isStandardError)(contents)) {
+        const message = (0, factories_1.errorMessage)(contents);
+        if (message) {
+            data.message = message;
+        }
+        const { tags } = contents;
+        if (tags && Object.keys(tags).length) {
+            data.tags = { ...tags };
+        }
+    }
+    else if (contents.message) {
+        data.message = contents.message;
+    }
+    return data;
+}
+exports.toFailure = toFailure;
+function isServerProblem(status) {
+    return statuses[status].http >= 500;
+}
+exports.isServerProblem = isServerProblem;
+
+
+/***/ }),
+
+/***/ 1775:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.enclosingPackageInfo = exports.running = void 0;
+const stl_errors_1 = __nccwpck_require__(1553);
+const fs_1 = __nccwpck_require__(7147);
+const path_1 = __importDefault(__nccwpck_require__(1017));
+/** Default environment check implementation. */
+exports.running = (() => {
+    return {
+        inProduction: () => process.env.NODE_ENV === 'production',
+        inTest: () => process.env.NODE_ENV === 'test',
+    };
+})();
+const repositoryPattern = /github:opvious\/(.*)/;
+/**
+ * Returns the package information enclosing the input path. For this to work,
+ * the following two conditions must be satisfied:
+ *
+ * 1. The input directory path is typically provided via `__dirname` and must be
+ *   within one of the following folders: `src`, `lib`, `test` (possibly deeply
+ *   nested).
+ * 2. The package's `package.json` must be at the same level as the above
+ *   folder.
+ *
+ * This function will throw if the package is missing version or repository
+ * fields.
+ */
+function enclosingPackageInfo(dp) {
+    const pat = new RegExp(`${path_1.default.sep}(src|lib|test)(${path_1.default.sep}|$)`, 'g');
+    const matches = [...dp.matchAll(pat)];
+    const root = matches.length
+        ? dp.slice(0, matches[matches.length - 1]?.index)
+        : dp;
+    const str = (0, fs_1.readFileSync)(path_1.default.join(root, 'package.json'), 'utf8');
+    const { name, repository, version } = JSON.parse(str);
+    (0, stl_errors_1.assertType)('string', name);
+    (0, stl_errors_1.assertType)('string', version);
+    const match = repositoryPattern.exec(repository);
+    (0, stl_errors_1.assert)(match, 'Invalid package repository value: %j', repository);
+    return { root, name, version, repository: stl_errors_1.check.isPresent(match[1]) };
+}
+exports.enclosingPackageInfo = enclosingPackageInfo;
+
+
+/***/ }),
+
+/***/ 4782:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+var __exportStar = (this && this.__exportStar) || function(m, exports) {
+    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
+};
+var __classPrivateFieldGet = (this && this.__classPrivateFieldGet) || function (receiver, state, kind, f) {
+    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a getter");
+    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
+    return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
+};
+var __classPrivateFieldSet = (this && this.__classPrivateFieldSet) || function (receiver, state, value, kind, f) {
+    if (kind === "m") throw new TypeError("Private method is not writable");
+    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a setter");
+    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot write private member to an object whose class did not declare it");
+    return (kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value)), value;
+};
+var _StandardTelemetry_logger, _StandardTelemetry_meter, _StandardTelemetry_tracer, _RecordingTelemetry_spanRecords, _RecordingTelemetry_logger;
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.RecordingTelemetry = exports.noopTelemetry = exports.StandardTelemetry = exports.withActiveSpan = exports.recordErrorOnSpan = exports.instrumentsFor = exports.settingLogLevel = exports.logThresholder = exports.LoggerProvider = void 0;
+const otel = __importStar(__nccwpck_require__(5163));
+const stl_utils_1 = __nccwpck_require__(8140);
+const logging_1 = __nccwpck_require__(9842);
+const metrics_1 = __nccwpck_require__(1128);
+const tracing_1 = __nccwpck_require__(8343);
+__exportStar(__nccwpck_require__(1775), exports);
+var logging_2 = __nccwpck_require__(9842);
+Object.defineProperty(exports, "LoggerProvider", ({ enumerable: true, get: function () { return logging_2.LoggerProvider; } }));
+Object.defineProperty(exports, "logThresholder", ({ enumerable: true, get: function () { return logging_2.logThresholder; } }));
+Object.defineProperty(exports, "settingLogLevel", ({ enumerable: true, get: function () { return logging_2.settingLogLevel; } }));
+var metrics_2 = __nccwpck_require__(1128);
+Object.defineProperty(exports, "instrumentsFor", ({ enumerable: true, get: function () { return metrics_2.instrumentsFor; } }));
+var tracing_2 = __nccwpck_require__(8343);
+Object.defineProperty(exports, "recordErrorOnSpan", ({ enumerable: true, get: function () { return tracing_2.recordErrorOnSpan; } }));
+Object.defineProperty(exports, "withActiveSpan", ({ enumerable: true, get: function () { return tracing_2.withActiveSpan; } }));
+const MAIN_APP_NAME = 'main';
+class StandardTelemetry {
+    constructor(lib, values, loggerProvider, meterProvider) {
+        this.lib = lib;
+        this.values = values;
+        this.loggerProvider = loggerProvider;
+        this.meterProvider = meterProvider;
+        _StandardTelemetry_logger.set(this, void 0);
+        _StandardTelemetry_meter.set(this, void 0);
+        _StandardTelemetry_tracer.set(this, void 0);
+    }
+    get logger() {
+        if (!__classPrivateFieldGet(this, _StandardTelemetry_logger, "f")) {
+            const log = this.loggerProvider.logger(this.lib);
+            __classPrivateFieldSet(this, _StandardTelemetry_logger, this.values ? log.child(this.values) : log, "f");
+        }
+        return __classPrivateFieldGet(this, _StandardTelemetry_logger, "f");
+    }
+    get meter() {
+        if (!__classPrivateFieldGet(this, _StandardTelemetry_meter, "f")) {
+            const { lib, meterProvider } = this;
+            const name = lib?.name ?? MAIN_APP_NAME;
+            __classPrivateFieldSet(this, _StandardTelemetry_meter, meterProvider.getMeter(name, lib?.version), "f");
+            // TODO: Decorading meter.
+        }
+        return __classPrivateFieldGet(this, _StandardTelemetry_meter, "f");
+    }
+    get tracer() {
+        if (!__classPrivateFieldGet(this, _StandardTelemetry_tracer, "f")) {
+            const { lib } = this;
+            const name = lib?.name ?? MAIN_APP_NAME;
+            __classPrivateFieldSet(this, _StandardTelemetry_tracer, otel.trace.getTracer(name, lib?.version), "f");
+        }
+        return __classPrivateFieldGet(this, _StandardTelemetry_tracer, "f");
+    }
+    metrics(instrs) {
+        return (0, metrics_1.metricsFor)(this.meter, instrs);
+    }
+    via(lib) {
+        return new StandardTelemetry(lib, this.values, this.loggerProvider, this.meterProvider);
+    }
+    logging(vals) {
+        return new StandardTelemetry(this.lib, { ...vals, ...this.values }, this.loggerProvider, this.meterProvider);
+    }
+}
+exports.StandardTelemetry = StandardTelemetry;
+_StandardTelemetry_logger = new WeakMap(), _StandardTelemetry_meter = new WeakMap(), _StandardTelemetry_tracer = new WeakMap();
+/** Returns a telemetry instance which discards all data. */
+function noopTelemetry() {
+    return new NoopTelemetry();
+}
+exports.noopTelemetry = noopTelemetry;
+class NoopTelemetry {
+    constructor() {
+        this.logger = (0, logging_1.noopLogger)();
+        this.meter = otel.createNoopMeter();
+        this.tracer = noopTracer();
+    }
+    metrics(instrs) {
+        return (0, metrics_1.metricsFor)(this.meter, instrs);
+    }
+    via() {
+        return this;
+    }
+    logging() {
+        return this;
+    }
+}
+function noopTracer() {
+    const provider = new otel.ProxyTracerProvider();
+    return provider.getTracer('noop');
+}
+const TEST_APP_NAME = 'test';
+/**
+ * A telemetry instance which records logs and spans (not metrics
+ * currently). This can be useful in tests.
+ */
+class RecordingTelemetry {
+    constructor(lib, values, records, loggerProvider) {
+        this.lib = lib;
+        this.values = values;
+        this.records = records;
+        this.loggerProvider = loggerProvider;
+        _RecordingTelemetry_spanRecords.set(this, []);
+        this.promise = new Promise(stl_utils_1.noop);
+        _RecordingTelemetry_logger.set(this, void 0);
+        this.meter = otel.createNoopMeter();
+        this.tracer = new tracing_1.RecordingTracer(__classPrivateFieldGet(this, _RecordingTelemetry_spanRecords, "f"), otel.trace.getTracer(TEST_APP_NAME));
+    }
+    /**
+     * Returns a new telemetry instance which both records and outputs logs and
+     * spans. The first input spec can used to generate a first filter for log
+     * messages (messages which do not meet it are neither recorded nor output). A
+     * secondary filter derived from the environment is applied to decide which of
+     * those messages to also output.
+     */
+    static forTesting(spec, opts) {
+        const records = [];
+        return new RecordingTelemetry(undefined, undefined, records, logging_1.LoggerProvider.forThresholder((0, logging_1.logThresholder)(spec), {
+            ...opts,
+            destination: (0, logging_1.recordingDestination)({
+                into: records,
+                thresholder: (0, logging_1.logThresholder)(),
+                destination: opts?.destination,
+            }),
+        }));
+    }
+    get logger() {
+        if (!__classPrivateFieldGet(this, _RecordingTelemetry_logger, "f")) {
+            const log = this.loggerProvider.logger(this.lib);
+            __classPrivateFieldSet(this, _RecordingTelemetry_logger, this.values ? log.child(this.values) : log, "f");
+        }
+        return __classPrivateFieldGet(this, _RecordingTelemetry_logger, "f");
+    }
+    /**
+     * The recorded messages. Note that these log messages are not decorated (e.g.
+     * with library or operation information). They contain the raw arguments
+     * given to at the log call-site.
+     */
+    get logRecords() {
+        return this.records;
+    }
+    /** The recorded spans. Spans are added in the order they are created. */
+    get spanRecords() {
+        return __classPrivateFieldGet(this, _RecordingTelemetry_spanRecords, "f");
+    }
+    waitForPendingSpans() {
+        return this.tracer.waitForPendingSpans();
+    }
+    /** Clears all recorded data. */
+    reset() {
+        this.records.length = 0;
+        __classPrivateFieldGet(this, _RecordingTelemetry_spanRecords, "f").length = 0;
+        this.tracer.discardPendingSpans();
+    }
+    metrics(instrs) {
+        return (0, metrics_1.metricsFor)(this.meter, instrs);
+    }
+    via(lib) {
+        return new RecordingTelemetry(lib, this.values, this.records, this.loggerProvider);
+    }
+    logging(vals) {
+        return new RecordingTelemetry(this.lib, { ...this.values, ...vals }, this.records, this.loggerProvider);
+    }
+}
+exports.RecordingTelemetry = RecordingTelemetry;
+_RecordingTelemetry_spanRecords = new WeakMap(), _RecordingTelemetry_logger = new WeakMap();
+
+
+/***/ }),
+
+/***/ 2225:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.logThresholder = exports.checkIsLevel = exports.levelNumber = exports.levelNumbers = void 0;
+const stl_errors_1 = __nccwpck_require__(1553);
+const stl_utils_1 = __nccwpck_require__(8140);
+const pino_1 = __nccwpck_require__(8085);
+const common_1 = __nccwpck_require__(1775);
+exports.levelNumbers = pino_1.levels.values;
+function levelNumber(lvl) {
+    return exports.levelNumbers[checkIsLevel(lvl)];
+}
+exports.levelNumber = levelNumber;
+function checkIsLevel(lvl) {
+    (0, stl_errors_1.assert)(exports.levelNumbers[lvl] !== undefined, 'Unknown log level', lvl);
+    return lvl;
+}
+exports.checkIsLevel = checkIsLevel;
+function logThresholder(spec) {
+    const fallback = fallbackLevelNumber();
+    const overrides = stl_utils_1.GlobMapper.forSpec(spec || process.env.LL || '', levelNumber);
+    return (lib) => {
+        return (lib ? overrides.map(lib) : overrides.fallback) ?? fallback;
+    };
+}
+exports.logThresholder = logThresholder;
+function fallbackLevelNumber() {
+    const lvl = common_1.running.inTest()
+        ? process.env.CI
+            ? 'error'
+            : 'fatal'
+        : common_1.running.inProduction()
+            ? 'info'
+            : 'debug';
+    return levelNumber(lvl);
+}
+
+
+/***/ }),
+
+/***/ 695:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.settingLogLevel = exports.activeLevelNumber = exports.contextLogValues = void 0;
+const otel = __importStar(__nccwpck_require__(5163));
+const common_1 = __nccwpck_require__(2225);
+function contextLogValues(ctx) {
+    return ctx && otel.trace.isSpanContextValid(ctx)
+        ? { t: ctx.traceId, s: ctx.spanId }
+        : undefined;
+}
+exports.contextLogValues = contextLogValues;
+// Key used to store log level within the trace state.
+const LOG_LEVEL_TRACE_STATE_KEY = 'opv.ll';
+/**
+ * Returns the currently (or from the input context) active log leven number, if
+ * any. This function requires trace context propagation to be enabled.
+ */
+function activeLevelNumber(ctx) {
+    const val = ctx.traceState?.get(LOG_LEVEL_TRACE_STATE_KEY);
+    return val == null ? undefined : +val;
+}
+exports.activeLevelNumber = activeLevelNumber;
+/**
+ * Returns a new trace state with the operation verbosity set to the given
+ * value. Note that spans may be missing a state initially. In this case, you
+ * can call this method as follows:
+ *
+ *  ```ts
+ *  import {TraceState} from '@opentelemetry/core';
+ *
+ *  // ...
+ *
+ *  const ctx = span.spanContext();
+ *  ctx.traceState = settingOperationVerbosity(
+ *    ctx.traceState ?? new TraceState(),
+ *    OperationVerbosity.DEBUG
+ *  );
+ *  ```
+ */
+function settingLogLevel(state, lvl) {
+    return state.set(LOG_LEVEL_TRACE_STATE_KEY, '' + (0, common_1.levelNumber)(lvl));
+}
+exports.settingLogLevel = settingLogLevel;
+
+
+/***/ }),
+
+/***/ 7199:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+/** Error serialization utilities. */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.errorSerializer = void 0;
+const stl_errors_1 = __nccwpck_require__(1553);
+const objects_1 = __nccwpck_require__(699);
+const std = __importStar(__nccwpck_require__(5848));
+/**
+ * Returns an `Error` serializer for Pino. The unique argument can be used to
+ * serialize additional error types. The default handles standard `Error` and
+ * `VError` instances.
+ */
+function errorSerializer(fns) {
+    const serializers = [
+        ...(fns ?? []),
+        serializeStatusError,
+        serializeStandardError,
+    ];
+    function serialize(err) {
+        for (const fn of serializers) {
+            const ret = fn(err, serialize);
+            if (ret !== undefined) {
+                return ret;
+            }
+        }
+        return std.err(err);
+    }
+    return serialize;
+}
+exports.errorSerializer = errorSerializer;
+/** A custom error serializer for standard error instances. */
+function serializeStandardError(err, next) {
+    // https://github.com/joyent/node-verror/blob/master/lib/verror.js
+    if (!(0, stl_errors_1.isStandardError)(err)) {
+        return undefined;
+    }
+    const { cause } = err;
+    return {
+        name: err.name,
+        message: (0, stl_errors_1.errorMessage)(err),
+        code: (0, stl_errors_1.errorCode)(err),
+        stack: err.stack,
+        tags: (0, objects_1.contained)(err.tags),
+        cause: cause
+            ? Array.isArray(cause)
+                ? cause.map(next)
+                : next(cause)
+            : undefined,
+    };
+}
+function serializeStatusError(err, next) {
+    // https://github.com/joyent/node-verror/blob/master/lib/verror.js
+    if (!(0, stl_errors_1.isStatusError)(err)) {
+        return undefined;
+    }
+    return {
+        name: err.name,
+        status: err.status,
+        stack: err.stack,
+        contents: next(err.contents),
+    };
+}
+
+
+/***/ }),
+
+/***/ 9842:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __exportStar = (this && this.__exportStar) || function(m, exports) {
+    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.settingLogLevel = exports.logThresholder = void 0;
+var common_1 = __nccwpck_require__(2225);
+Object.defineProperty(exports, "logThresholder", ({ enumerable: true, get: function () { return common_1.logThresholder; } }));
+var context_1 = __nccwpck_require__(695);
+Object.defineProperty(exports, "settingLogLevel", ({ enumerable: true, get: function () { return context_1.settingLogLevel; } }));
+__exportStar(__nccwpck_require__(6345), exports);
+
+
+/***/ }),
+
+/***/ 6345:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.recordingDestination = exports.noopLogger = exports.LoggerProvider = void 0;
+const otel = __importStar(__nccwpck_require__(5163));
+const stl_utils_1 = __nccwpck_require__(8140);
+const pino_1 = __importStar(__nccwpck_require__(8085));
+const common_1 = __nccwpck_require__(1775);
+const common_2 = __nccwpck_require__(2225);
+const context_1 = __nccwpck_require__(695);
+const errors_1 = __nccwpck_require__(7199);
+class LoggerProvider {
+    constructor(pino, thresholder, resourceAttrs) {
+        this.pino = pino;
+        this.thresholder = thresholder;
+        this.resourceAttrs = resourceAttrs;
+    }
+    static forThresholder(thresholder, opts) {
+        const serializers = {
+            err: (0, errors_1.errorSerializer)(opts?.errorSerializers ?? []),
+        };
+        (0, stl_utils_1.ifPresent)(opts?.dataSerializers, (fns) => {
+            serializers.data = dataSerializer(fns);
+        });
+        const pinoOpts = {
+            name: opts?.name,
+            base: undefined,
+            level: 'trace',
+            redact: opts?.redact,
+            serializers,
+        };
+        const dst = logDestination(opts?.destination);
+        const log = (0, pino_1.default)(pinoOpts, dst);
+        return new LoggerProvider(log, thresholder, opts?.resource);
+    }
+    logger(lib) {
+        const { thresholder, resourceAttrs: res } = this;
+        const child = this.pino.child({
+            res: lib ? { ...res, ...libResourceAttrs(lib) } : res,
+        });
+        return new RealLogger(child, thresholder(lib?.name));
+    }
+}
+exports.LoggerProvider = LoggerProvider;
+const LIB_NAME_KEY = 'otel.library.name';
+const LIB_VERSION_KEY = 'otel.library.version';
+function libResourceAttrs(info) {
+    const res = { [LIB_NAME_KEY]: info.name };
+    if (info.version) {
+        res[LIB_VERSION_KEY] = info.version;
+    }
+    return res;
+}
+/** Immutable. */
+class RealLogger {
+    constructor(pino, minLevelNumber, spanContext) {
+        this.pino = pino;
+        this.minLevelNumber = minLevelNumber;
+        this.spanContext = spanContext;
+    }
+    child(vals) {
+        const { pino, minLevelNumber: num, spanContext } = this;
+        const { ctx, ...rest } = vals;
+        return new RealLogger(pino.child(rest), num, ctx ?? spanContext);
+    }
+    context() {
+        return this.spanContext ?? otel.trace.getActiveSpan()?.spanContext();
+    }
+    shouldLogAt(lvl, ctx) {
+        const { minLevelNumber: minLno } = this;
+        const opLno = (0, stl_utils_1.ifPresent)(ctx ?? this.context(), context_1.activeLevelNumber);
+        return (0, common_2.levelNumber)(lvl) >= (opLno ? Math.min(opLno, minLno) : minLno);
+    }
+    isLevelEnabled(lvl) {
+        return common_1.running.inTest() || this.shouldLogAt(lvl, this.context());
+    }
+    logAt(lvl, arg0, ...args) {
+        const hasVals = typeof arg0 == 'object';
+        const ctx = (hasVals && arg0.ctx) || this.context();
+        if (!this.shouldLogAt(lvl, ctx)) {
+            return;
+        }
+        const obj = hasVals ? { ...arg0 } : {};
+        if (ctx) {
+            obj.ctx = (0, context_1.contextLogValues)(ctx);
+        }
+        if (hasVals) {
+            this.pino[lvl](obj, ...args);
+        }
+        else {
+            this.pino[lvl](obj, arg0, ...args);
+        }
+    }
+    trace(arg0, ...args) {
+        this.logAt('trace', arg0, ...args);
+    }
+    debug(arg0, ...args) {
+        this.logAt('debug', arg0, ...args);
+    }
+    info(arg0, ...args) {
+        this.logAt('info', arg0, ...args);
+    }
+    warn(arg0, ...args) {
+        this.logAt('warn', arg0, ...args);
+    }
+    error(arg0, ...args) {
+        this.logAt('error', arg0, ...args);
+    }
+    fatal(arg0, ...args) {
+        this.logAt('fatal', arg0, ...args);
+    }
+}
+const DEFAULT_FD = 1;
+function logDestination(dst) {
+    if (typeof dst == 'object') {
+        return dst;
+    }
+    return (0, pino_1.destination)({
+        fd: typeof dst != 'string' ? dst ?? DEFAULT_FD : undefined,
+        dest: typeof dst == 'string' ? dst : undefined,
+        sync: common_1.running.inTest(),
+    });
+}
+function dataSerializer(obj) {
+    return (data) => {
+        for (const [key, fn] of Object.entries(obj)) {
+            const val = data[key];
+            if (val !== undefined) {
+                data[key] = fn(val);
+            }
+        }
+        return data;
+    };
+}
+// Other loggers
+/**
+ * Returns a new logger instance which ignores all log statements and always
+ * returns false for `isLevelEnabled` calls. This can be useful as default
+ * value, particularly when implementing libraries.
+ */
+function noopLogger() {
+    return new NoopLogger();
+}
+exports.noopLogger = noopLogger;
+class NoopLogger {
+    child() {
+        return this;
+    }
+    isLevelEnabled() {
+        return false;
+    }
+    trace() { } // eslint-disable-line @typescript-eslint/no-empty-function
+    debug() { } // eslint-disable-line @typescript-eslint/no-empty-function
+    info() { } // eslint-disable-line @typescript-eslint/no-empty-function
+    warn() { } // eslint-disable-line @typescript-eslint/no-empty-function
+    error() { } // eslint-disable-line @typescript-eslint/no-empty-function
+    fatal() { } // eslint-disable-line @typescript-eslint/no-empty-function
+}
+function recordingDestination(args) {
+    const { into, thresholder } = args;
+    const dst = logDestination(args.destination);
+    return {
+        write(msg) {
+            const rec = JSON.parse(msg);
+            into.push(rec);
+            if (rec.level >= thresholder(rec.res?.[LIB_NAME_KEY])) {
+                dst.write(msg);
+            }
+        },
+    };
+}
+exports.recordingDestination = recordingDestination;
+
+
+/***/ }),
+
+/***/ 1128:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.instrumentsFor = exports.metricsFor = void 0;
+const stl_errors_1 = __nccwpck_require__(1553);
+/** No runtime overhead for counters and histograms. */
+function metricsFor(meter, instrs) {
+    const metrics = {};
+    for (const [key, val] of Object.entries(instrs)) {
+        let metric;
+        const instr = val;
+        switch (instr.kind) {
+            case 'counter':
+                metric = meter.createCounter(instr.name, instr);
+                break;
+            case 'histogram':
+                metric = meter.createHistogram(instr.name, instr);
+                break;
+            case 'upDownCounter':
+                metric = meter.createUpDownCounter(instr.name, instr);
+                break;
+            default:
+                throw stl_errors_1.errors.absurd(instr.kind);
+        }
+        metrics[key] = metric;
+    }
+    return metrics;
+}
+exports.metricsFor = metricsFor;
+/** No-op function for easier client typing. */
+function instrumentsFor(obj) {
+    return obj;
+}
+exports.instrumentsFor = instrumentsFor;
+// TODO: Gauge. To do this properly, we should allow declaring gauges by batches
+// and expose an API which sets them all at once. This is useful for example in
+// the queue setup where fetching sizes is expensive but returns all lengths in
+// one call (pending, working, ...).
+
+
+/***/ }),
+
+/***/ 8343:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.RecordingSpan = exports.RecordingTracer = exports.recordErrorOnSpan = exports.withActiveSpan = void 0;
+const otel = __importStar(__nccwpck_require__(5163));
+const stl_errors_1 = __nccwpck_require__(1553);
+const stl_utils_1 = __nccwpck_require__(8140);
+/**
+ * Creates a new active span wrapping the execution of the input function. Both
+ * promise and non-promise return values are supported.
+ */
+function withActiveSpan(params, fn) {
+    const { tracer, name, options, context, skipOkStatus } = params;
+    const opts = options ?? {};
+    const ctx = context ?? otel.context.active();
+    return tracer.startActiveSpan(name, opts, ctx, (span) => {
+        let target;
+        try {
+            target = fn(span);
+        }
+        catch (err) {
+            failSpan(span, err);
+        }
+        if (!isPromise(target)) {
+            endSpan(span, skipOkStatus);
+            return target;
+        }
+        return target
+            .then((ret) => {
+            endSpan(span, skipOkStatus);
+            return ret;
+        })
+            .catch((err) => {
+            failSpan(span, err);
+        });
+    });
+}
+exports.withActiveSpan = withActiveSpan;
+function endSpan(span, skipOkStatus) {
+    if (!skipOkStatus) {
+        span.setStatus({ code: otel.SpanStatusCode.OK });
+    }
+    span.end();
+}
+function failSpan(span, err) {
+    recordErrorOnSpan(err, span);
+    span.setStatus({ code: otel.SpanStatusCode.ERROR, message: (0, stl_errors_1.errorMessage)(err) });
+    span.end();
+    throw err;
+}
+function isPromise(arg) {
+    return typeof arg?.then == 'function';
+}
+/**
+ * Convenience method to record errors on a span. Non-error inputs are coerced
+ * to string.
+ */
+function recordErrorOnSpan(err, span) {
+    if (err instanceof Error || typeof err == 'string') {
+        span.recordException(err);
+        return;
+    }
+    span.recordException((0, stl_errors_1.errorMessage)(err) ?? '' + err);
+}
+exports.recordErrorOnSpan = recordErrorOnSpan;
+/** A tracer which automaticall adds attributes to created spans. */
+class RecordingTracer {
+    constructor(records, delegate) {
+        this.records = records;
+        this.delegate = delegate;
+        this.pendingSpans = new Set();
+    }
+    recordingSpan(name, delegate, opts) {
+        const span = new RecordingSpan(name, delegate);
+        if (opts?.attributes) {
+            span.setAttributes(opts.attributes);
+        }
+        this.records.push(span);
+        this.pendingSpans.add(span);
+        span.ended.finally(() => {
+            this.pendingSpans.delete(span);
+        });
+        return span;
+    }
+    async waitForPendingSpans() {
+        let span;
+        while ((span = (0, stl_utils_1.firstElement)(this.pendingSpans))) {
+            await span.ended;
+        }
+    }
+    discardPendingSpans() {
+        for (const span of this.pendingSpans) {
+            this.pendingSpans.delete(span);
+        }
+    }
+    startSpan(name, opts, ctx) {
+        const delegate = this.delegate.startSpan(name, opts, ctx);
+        return this.recordingSpan(name, delegate, opts);
+    }
+    startActiveSpan(name, arg1, arg2, arg3) {
+        const opts = typeof arg1 == 'function' ? {} : arg1;
+        const ctx = typeof arg2 == 'function' || !arg2 ? otel.context.active() : arg2;
+        const fn = typeof arg1 == 'function'
+            ? arg1
+            : typeof arg2 == 'function'
+                ? arg2
+                : arg3;
+        (0, stl_errors_1.assert)(fn, 'Missing function');
+        return this.delegate.startActiveSpan(name, opts, ctx, (delegate) => fn(this.recordingSpan(name, delegate, opts)));
+    }
+}
+exports.RecordingTracer = RecordingTracer;
+class RecordingSpan {
+    constructor(name, delegate) {
+        this.name = name;
+        this.delegate = delegate;
+        this.exceptions = [];
+        this.attributes = {};
+        this.events = [];
+        const [ended, onEnd] = (0, stl_utils_1.resolvable)();
+        this.ended = ended;
+        this.onEnd = () => onEnd(undefined);
+    }
+    spanContext() {
+        return this.delegate.spanContext();
+    }
+    setAttribute(key, value) {
+        this.attributes[key] = value;
+        return this;
+    }
+    setAttributes(attrs) {
+        Object.assign(this.attributes, attrs);
+        return this;
+    }
+    addEvent(name, arg) {
+        const attrs = typeof arg == 'object' && !Array.isArray(arg) && !(arg instanceof Date)
+            ? arg
+            : {};
+        this.events.push({ name, attributes: attrs });
+        return this;
+    }
+    setStatus(status) {
+        this.status = status;
+        return this;
+    }
+    updateName(name) {
+        this.name = name;
+        return this;
+    }
+    end() {
+        this.onEnd();
+    }
+    isRecording() {
+        return true;
+    }
+    recordException(exc) {
+        this.exceptions.push(exc);
+    }
+}
+exports.RecordingSpan = RecordingSpan;
+
+
+/***/ }),
+
+/***/ 2483:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.range = exports.firstElement = exports.onlyElement = exports.shuffled = exports.atLeastTwo = exports.atLeastOne = exports.filterAbsent = void 0;
+const stl_errors_1 = __nccwpck_require__(1553);
+/** Removes all null and undefined values from an array. */
+function filterAbsent(arr) {
+    return arr.filter((v) => v !== null && v !== undefined);
+}
+exports.filterAbsent = filterAbsent;
+// Arrays with type-level minimum lengths. We are not using ts-essentials'
+// `Opaque` since we want 2 to extend 1 as well.
+const atLeastOneSymbol = Symbol('at-least-one');
+function assertLengthAtLeast(arr, min) {
+    (0, stl_errors_1.assert)(arr.length >= min, 'Too few elements: %d < %d', arr.length, min);
+}
+function atLeastOne(arr) {
+    assertLengthAtLeast(arr, 1);
+    return arr;
+}
+exports.atLeastOne = atLeastOne;
+const atLeastTwoSymbol = Symbol('at-least-two');
+function atLeastTwo(arr) {
+    assertLengthAtLeast(arr, 2);
+    return arr;
+}
+exports.atLeastTwo = atLeastTwo;
+/** Returns a shuffled version of the input array. */
+function shuffled(arr) {
+    const mut = [...arr];
+    shuffle(mut);
+    return mut;
+}
+exports.shuffled = shuffled;
+function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+}
+/**
+ * Returns the only element in an array, throwing if the array does not have
+ * length 1.
+ */
+function onlyElement(arr) {
+    (0, stl_errors_1.assert)(arr.length === 1, 'Not a singleton: %j', arr);
+    return arr[0];
+}
+exports.onlyElement = onlyElement;
+/** Returns the first element from an iterable, if any. */
+function firstElement(iter) {
+    for (const elem of iter) {
+        return elem;
+    }
+    return undefined;
+}
+exports.firstElement = firstElement;
+/**
+ * Creates a range from `from` inclusive (defaulting to 0) to `to` exclusive.
+ */
+function range(to, from) {
+    const start = from ?? 0;
+    if (start >= to) {
+        return [];
+    }
+    const ret = Array(to - start);
+    for (let i = 0; i < ret.length; i++) {
+        ret[i] = i + start;
+    }
+    return ret;
+}
+exports.range = range;
+
+
+/***/ }),
+
+/***/ 9582:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.yieldEvents = exports.typedEmitter = void 0;
+const events_1 = __importDefault(__nccwpck_require__(2361));
+/** Returns a typed emitter backed by standard `events.EventEmitter`. */
+function typedEmitter() {
+    return new events_1.default.EventEmitter();
+}
+exports.typedEmitter = typedEmitter;
+/**
+ * Iterates on emitted events of the given name until aborted. This is similar
+ * to `events.on` but does not throw when aborted, the iterator simply returns.
+ * Note that all listeners will be removed from the target when this iterator
+ * returns.
+ */
+async function* yieldEvents(ee, name, opts) {
+    let signal = opts?.signal;
+    if (signal?.aborted) {
+        return;
+    }
+    const until = opts?.until;
+    if (until) {
+        const ac = new AbortController();
+        const stop = () => {
+            ac.abort();
+        };
+        for (const n of Array.isArray(until) ? until : [until]) {
+            ee.on(n, stop);
+        }
+        if (signal) {
+            signal.onabort?.(stop);
+        }
+        signal = ac.signal;
+    }
+    try {
+        yield* events_1.default.on(ee, name, { signal });
+    }
+    catch (err) {
+        if (err.code !== 'ABORT_ERR') {
+            throw err;
+        }
+    }
+    // We don't need to remove any listeners since `events.on` will already have.
+}
+exports.yieldEvents = yieldEvents;
+
+
+/***/ }),
+
+/***/ 5292:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.collectable = exports.asTagFunction = exports.identity = exports.pass = exports.noop = exports.resolvable = exports.atMostOnce = exports.ifPresent = void 0;
+const stl_errors_1 = __nccwpck_require__(1553);
+/** Runs a function if the argument is not null or undefined. */
+function ifPresent(val, fn) {
+    return val === null || val === undefined ? undefined : fn(val);
+}
+exports.ifPresent = ifPresent;
+/**
+ * Wraps a function, returning a function which will call the handler at most
+ * once. Subsequent calls are logged but do not trigger the handler.
+ */
+function atMostOnce(fn, cb) {
+    wrap.callCount = 0;
+    return wrap;
+    function wrap(arg) {
+        const count = wrap.callCount++;
+        if (!count) {
+            fn(arg);
+            return;
+        }
+        cb?.(arg, count);
+    }
+}
+exports.atMostOnce = atMostOnce;
+/**
+ * Creates a promise which can be resolved by calling the returned callback.
+ * This is similar to "deferred" objects provided by other libraries. The
+ * optional callback argument will be called just before the promise is
+ * resolved (or rejected).
+ */
+function resolvable(cb) {
+    let ok;
+    let fail;
+    const p = new Promise((ok_, fail_) => {
+        ok = ok_;
+        fail = fail_;
+    });
+    let resolved = false;
+    const resolve = (err, val) => {
+        if (resolved) {
+            cb?.(err, val);
+            return;
+        }
+        resolved = true;
+        if (err) {
+            fail(err);
+            return;
+        }
+        ok(val);
+    };
+    return [p, resolve];
+}
+exports.resolvable = resolvable;
+/** Placeholder sync function. */
+function noop() { }
+exports.noop = noop;
+/** Placeholder async function. */
+async function pass() { }
+exports.pass = pass;
+/** Identity function. */
+function identity(val) {
+    return val;
+}
+exports.identity = identity;
+/**
+ * Transforms a single-argument-string function, for example an opaque factory
+ * method into a function suitable for use as a tag function in template
+ * strings.
+ */
+function asTagFunction(fn) {
+    return (vals) => {
+        const [val, ...rest] = vals;
+        (0, stl_errors_1.assert)(val != null && rest.length === 0, 'Bad input: %j', vals);
+        return fn(val);
+    };
+}
+exports.asTagFunction = asTagFunction;
+/**
+ * Returns a function which collects its arguments into an array, accessible via
+ * the `collected` property.
+ */
+function collectable() {
+    collect.collected = [];
+    return collect;
+    function collect(arg) {
+        collect.collected.push(arg);
+    }
+}
+exports.collectable = collectable;
+
+
+/***/ }),
+
+/***/ 8140:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __exportStar = (this && this.__exportStar) || function(m, exports) {
+    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+__exportStar(__nccwpck_require__(2483), exports);
+__exportStar(__nccwpck_require__(9582), exports);
+__exportStar(__nccwpck_require__(5292), exports);
+__exportStar(__nccwpck_require__(699), exports);
+__exportStar(__nccwpck_require__(6119), exports);
+__exportStar(__nccwpck_require__(4244), exports);
+
+
+/***/ }),
+
+/***/ 699:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.contained = exports.checkJust = exports.assertJust = exports.just = exports.getJust = exports.assertKind = exports.freezable = void 0;
+const stl_errors_1 = __nccwpck_require__(1553);
+const untruncate_json_1 = __importDefault(__nccwpck_require__(132));
+const functions_1 = __nccwpck_require__(5292);
+/** Wraps an object, adding a freeze method. */
+function freezable(val, opts) {
+    const allow = (0, functions_1.ifPresent)(opts?.allowList, (a) => new Set(a));
+    const cb = (0, functions_1.ifPresent)(opts?.onFreeze, (fn) => () => {
+        fn(val);
+    });
+    const [handler, freezer] = freezing(allow, cb);
+    const proxy = new Proxy(val, handler);
+    return [proxy, freezer];
+}
+exports.freezable = freezable;
+const defaultFreezeAllowList = new Set([
+    'constructor',
+    'hasOwnProperty',
+    'isPrototypeOf',
+    'propertyIsEnumerable',
+    'toString',
+    'valueOf',
+    Symbol.toPrimitive,
+    Symbol.toStringTag,
+]);
+function freezing(allow, cb) {
+    let frozen = false;
+    function freeze() {
+        if (!frozen) {
+            frozen = true;
+            cb?.();
+        }
+    }
+    const handler = {
+        get(obj, prop, rcv) {
+            const desc = Object.getOwnPropertyDescriptor(obj, prop);
+            if (desc && !desc.get && typeof desc?.value != 'function') {
+                return desc?.value;
+            }
+            if (frozen && !defaultFreezeAllowList.has(prop) && !allow?.has(prop)) {
+                throw frozenObjectError('get', prop);
+            }
+            return Reflect.get(obj, prop, rcv);
+        },
+        set(obj, prop, val, rcv) {
+            if (frozen) {
+                throw frozenObjectError('set', prop);
+            }
+            return Reflect.set(obj, prop, val, rcv);
+        },
+        deleteProperty(obj, prop) {
+            if (frozen) {
+                throw frozenObjectError('del', prop);
+            }
+            return Reflect.deleteProperty(obj, prop);
+        },
+        defineProperty(obj, prop, attrs) {
+            if (frozen) {
+                throw frozenObjectError('def', prop);
+            }
+            return Reflect.defineProperty(obj, prop, attrs);
+        },
+    };
+    return [handler, freeze];
+}
+function frozenObjectError(meth, prop) {
+    return stl_errors_1.errors.illegal({
+        message: 'Object is frozen',
+        tags: { meth, prop: prop.toString() },
+    });
+}
+/** Asserts that the object matches the given branch. */
+function assertKind(obj, kind) {
+    (0, stl_errors_1.assert)(obj.kind === kind, 'Unexpected kind branch %s: %j', kind, obj);
+}
+exports.assertKind = assertKind;
+/** Extracts a branch from `JustOne`, narrowing the type appropriately. */
+function getJust(obj, just) {
+    return obj.just === just ? obj[just] : undefined;
+}
+exports.getJust = getJust;
+/** Wraps the argument into a `JustOne` compatible value. */
+function just(j, val) {
+    return { just: j, [j]: val };
+}
+exports.just = just;
+/** Asserts that the object matches the given branch. */
+function assertJust(obj, just) {
+    (0, stl_errors_1.assert)(obj.just === just, 'Unexpected just branch %s: %j', just, obj);
+}
+exports.assertJust = assertJust;
+/** Checks that the object matches the branch and returns its value. */
+function checkJust(obj, just) {
+    assertJust(obj, just);
+    return obj[just];
+}
+exports.checkJust = checkJust;
+const CONTAINED_HEADER_SIZE = 49; // Upper bound.
+// Log lines get truncated when they are go beyond 16kiB. We use this constant
+// to avoid logging data which would cause us to exceed that limit. It is lower
+// to account for other elements of the log line (message, metadata, ...).
+const DEFAULT_CONTAINED_SIZE = 12288;
+/**
+ * Fits data within a given length, potentially truncating it. This function is
+ * relatively expensive and shouldn't be called on critical paths (i.e. prefer
+ * guarding it with log-level enabled checks).
+ */
+function contained(data, to = DEFAULT_CONTAINED_SIZE) {
+    (0, stl_errors_1.assert)(to > CONTAINED_HEADER_SIZE, 'Contained length too small: %d <= %d', to, CONTAINED_HEADER_SIZE);
+    const maxSize = to - CONTAINED_HEADER_SIZE;
+    if (typeof data == 'string') {
+        const size = data.length;
+        return size <= maxSize
+            ? { size, data }
+            : { size, loss: 1 - maxSize / size, data: data.slice(0, maxSize) };
+    }
+    const full = JSON.stringify(data);
+    const size = full?.length ?? 0;
+    if (size <= maxSize) {
+        return { size, data };
+    }
+    const kept = (0, untruncate_json_1.default)(full.slice(0, maxSize));
+    return { size, loss: 1 - kept.length / size, data: JSON.parse(kept) };
+}
+exports.contained = contained;
+
+
+/***/ }),
+
+/***/ 6119:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/** Opaque type utilities. */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.isUuid = exports.newUuid = exports.slugify = exports.isSlug = exports.newSlug = void 0;
+const stl_errors_1 = __nccwpck_require__(1553);
+const change_case_1 = __nccwpck_require__(9091);
+const slugFirstCharRegexp = /[a-z]/;
+const slugPartRegexp = /^[a-z0-9]+$/;
+const DEFAULT_MAX_SLUG_LENGTH = 64;
+/**
+ * Promotes a string to a `Slug` instance, throwing `if the input is not a valid
+ * slug.
+ */
+function newSlug(arg, maxLength) {
+    if (!arg?.length) {
+        throw stl_errors_1.errors.invalid({
+            message: `Slug ${arg} is empty or undefined`,
+            tags: { arg },
+        });
+    }
+    const length = maxLength ?? DEFAULT_MAX_SLUG_LENGTH;
+    if (arg.length > length) {
+        throw stl_errors_1.errors.invalid({
+            message: `Slug ${arg} is too long: its length (${arg.length}) is ` +
+                `greater than the allowed limit ${length}`,
+            tags: { arg },
+        });
+    }
+    if (!slugFirstCharRegexp.test(arg.charAt(0))) {
+        throw stl_errors_1.errors.invalid({
+            message: `Slug ${arg} does not start with a lower-case ASCII char`,
+            tags: { arg },
+        });
+    }
+    const parts = arg.split('-');
+    if (!parts.every((s) => slugPartRegexp.test(s))) {
+        throw stl_errors_1.errors.invalid({
+            message: `Slug ${arg} is not a dash-separated sequence of ` + slugPartRegexp,
+            tags: { arg },
+        });
+    }
+    return arg;
+}
+exports.newSlug = newSlug;
+/** Checks whether the string is a valid slug. */
+function isSlug(arg, maxLength) {
+    const length = maxLength ?? DEFAULT_MAX_SLUG_LENGTH;
+    return (!!arg.length &&
+        arg.length <= length &&
+        slugFirstCharRegexp.test(arg.charAt(0)) &&
+        arg.split('-').every((s) => slugPartRegexp.test(s)));
+}
+exports.isSlug = isSlug;
+/** Attempts to transform the string into a valid slug. */
+function slugify(arg, maxLength) {
+    return newSlug((0, change_case_1.paramCase)(arg), maxLength);
+}
+exports.slugify = slugify;
+const uuidRegexp = 
+// eslint-disable-next-line max-len
+/^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000)$/i;
+/**
+ * Promotes a string to a `Uuid` instance, throwing if the input is not a valid
+ * UUID.
+ */
+function newUuid(arg) {
+    if (!isUuid(arg)) {
+        throw stl_errors_1.errors.invalid({ message: `${arg} is not a valid UUID`, tags: { arg } });
+    }
+    return arg;
+}
+exports.newUuid = newUuid;
+/** Checks whether the string is a valid UUID. */
+function isUuid(arg) {
+    return uuidRegexp.test(arg);
+}
+exports.isUuid = isUuid;
+
+
+/***/ }),
+
+/***/ 4244:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.commaSeparated = exports.GlobMapper = exports.globPredicate = void 0;
+const stl_errors_1 = __nccwpck_require__(1553);
+const picomatch_1 = __importDefault(__nccwpck_require__(8569));
+/**
+ * Builds a function which checks whether a string matches the input glob.
+ * Details on the globbing logic can be found in the underlying implementation:
+ * https://github.com/micromatch/picomatch. The following options are different
+ * from the default:
+ *
+ * + `bash` is true,
+ * + `dot` is true,
+ */
+function globPredicate(glob) {
+    return (0, picomatch_1.default)(glob, { bash: true, dot: true });
+}
+exports.globPredicate = globPredicate;
+/**
+ * Utility class for generating a mapping using globs as keys. This is useful
+ * for example to control log level overrides and other environment-based
+ * settings.
+ */
+class GlobMapper {
+    constructor(entries, fallback) {
+        this.entries = entries;
+        this.fallback = fallback;
+    }
+    static forSpec(spec, fn) {
+        const entries = new Map();
+        let fallback;
+        for (const item of spec.split(SPEC_DELIMITER)) {
+            const part = item.trim();
+            if (!part) {
+                continue;
+            }
+            const match = entryPattern.exec(part.trim());
+            if (match) {
+                const key = match[1]?.trim();
+                const raw = match[2]?.trim();
+                (0, stl_errors_1.assert)(key && raw, 'Bad match: %j', match);
+                entries.set(key, {
+                    predicate: globPredicate(key),
+                    value: fn ? fn(raw) : raw,
+                });
+            }
+            else {
+                fallback = fn ? fn(part) : part;
+            }
+        }
+        return new GlobMapper([...entries.values()], fallback);
+    }
+    map(arg) {
+        let val = this.fallback;
+        for (const { predicate, value } of this.entries) {
+            if (predicate(arg)) {
+                val = value;
+            }
+        }
+        return val;
+    }
+}
+exports.GlobMapper = GlobMapper;
+const SPEC_DELIMITER = ',';
+const entryPattern = /^([^=]+)=(.+)$/;
+/** Splits input on comma and trims each element. */
+function commaSeparated(str) {
+    return str
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s);
+}
+exports.commaSeparated = commaSeparated;
+
+
+/***/ }),
+
+/***/ 2068:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+/* module decorator */ module = __nccwpck_require__.nmd(module);
+
+const colorConvert = __nccwpck_require__(6931);
+
+const wrapAnsi16 = (fn, offset) => function () {
+	const code = fn.apply(colorConvert, arguments);
+	return `\u001B[${code + offset}m`;
+};
+
+const wrapAnsi256 = (fn, offset) => function () {
+	const code = fn.apply(colorConvert, arguments);
+	return `\u001B[${38 + offset};5;${code}m`;
+};
+
+const wrapAnsi16m = (fn, offset) => function () {
+	const rgb = fn.apply(colorConvert, arguments);
+	return `\u001B[${38 + offset};2;${rgb[0]};${rgb[1]};${rgb[2]}m`;
+};
+
+function assembleStyles() {
+	const codes = new Map();
+	const styles = {
+		modifier: {
+			reset: [0, 0],
+			// 21 isn't widely supported and 22 does the same thing
+			bold: [1, 22],
+			dim: [2, 22],
+			italic: [3, 23],
+			underline: [4, 24],
+			inverse: [7, 27],
+			hidden: [8, 28],
+			strikethrough: [9, 29]
+		},
+		color: {
+			black: [30, 39],
+			red: [31, 39],
+			green: [32, 39],
+			yellow: [33, 39],
+			blue: [34, 39],
+			magenta: [35, 39],
+			cyan: [36, 39],
+			white: [37, 39],
+			gray: [90, 39],
+
+			// Bright color
+			redBright: [91, 39],
+			greenBright: [92, 39],
+			yellowBright: [93, 39],
+			blueBright: [94, 39],
+			magentaBright: [95, 39],
+			cyanBright: [96, 39],
+			whiteBright: [97, 39]
+		},
+		bgColor: {
+			bgBlack: [40, 49],
+			bgRed: [41, 49],
+			bgGreen: [42, 49],
+			bgYellow: [43, 49],
+			bgBlue: [44, 49],
+			bgMagenta: [45, 49],
+			bgCyan: [46, 49],
+			bgWhite: [47, 49],
+
+			// Bright color
+			bgBlackBright: [100, 49],
+			bgRedBright: [101, 49],
+			bgGreenBright: [102, 49],
+			bgYellowBright: [103, 49],
+			bgBlueBright: [104, 49],
+			bgMagentaBright: [105, 49],
+			bgCyanBright: [106, 49],
+			bgWhiteBright: [107, 49]
+		}
+	};
+
+	// Fix humans
+	styles.color.grey = styles.color.gray;
+
+	for (const groupName of Object.keys(styles)) {
+		const group = styles[groupName];
+
+		for (const styleName of Object.keys(group)) {
+			const style = group[styleName];
+
+			styles[styleName] = {
+				open: `\u001B[${style[0]}m`,
+				close: `\u001B[${style[1]}m`
+			};
+
+			group[styleName] = styles[styleName];
+
+			codes.set(style[0], style[1]);
+		}
+
+		Object.defineProperty(styles, groupName, {
+			value: group,
+			enumerable: false
+		});
+
+		Object.defineProperty(styles, 'codes', {
+			value: codes,
+			enumerable: false
+		});
+	}
+
+	const ansi2ansi = n => n;
+	const rgb2rgb = (r, g, b) => [r, g, b];
+
+	styles.color.close = '\u001B[39m';
+	styles.bgColor.close = '\u001B[49m';
+
+	styles.color.ansi = {
+		ansi: wrapAnsi16(ansi2ansi, 0)
+	};
+	styles.color.ansi256 = {
+		ansi256: wrapAnsi256(ansi2ansi, 0)
+	};
+	styles.color.ansi16m = {
+		rgb: wrapAnsi16m(rgb2rgb, 0)
+	};
+
+	styles.bgColor.ansi = {
+		ansi: wrapAnsi16(ansi2ansi, 10)
+	};
+	styles.bgColor.ansi256 = {
+		ansi256: wrapAnsi256(ansi2ansi, 10)
+	};
+	styles.bgColor.ansi16m = {
+		rgb: wrapAnsi16m(rgb2rgb, 10)
+	};
+
+	for (let key of Object.keys(colorConvert)) {
+		if (typeof colorConvert[key] !== 'object') {
+			continue;
+		}
+
+		const suite = colorConvert[key];
+
+		if (key === 'ansi16') {
+			key = 'ansi';
+		}
+
+		if ('ansi16' in suite) {
+			styles.color.ansi[key] = wrapAnsi16(suite.ansi16, 0);
+			styles.bgColor.ansi[key] = wrapAnsi16(suite.ansi16, 10);
+		}
+
+		if ('ansi256' in suite) {
+			styles.color.ansi256[key] = wrapAnsi256(suite.ansi256, 0);
+			styles.bgColor.ansi256[key] = wrapAnsi256(suite.ansi256, 10);
+		}
+
+		if ('rgb' in suite) {
+			styles.color.ansi16m[key] = wrapAnsi16m(suite.rgb, 0);
+			styles.bgColor.ansi16m[key] = wrapAnsi16m(suite.rgb, 10);
+		}
+	}
+
+	return styles;
+}
+
+// Make the export immutable
+Object.defineProperty(module, 'exports', {
+	enumerable: true,
+	get: assembleStyles
+});
+
+
+/***/ }),
+
 /***/ 4812:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -3391,13 +8856,59 @@ function descending(a, b)
 
 /***/ }),
 
+/***/ 6950:
+/***/ ((module) => {
+
+"use strict";
+
+
+/* global SharedArrayBuffer, Atomics */
+
+if (typeof SharedArrayBuffer !== 'undefined' && typeof Atomics !== 'undefined') {
+  const nil = new Int32Array(new SharedArrayBuffer(4))
+
+  function sleep (ms) {
+    // also filters out NaN, non-number types, including empty strings, but allows bigints
+    const valid = ms > 0 && ms < Infinity 
+    if (valid === false) {
+      if (typeof ms !== 'number' && typeof ms !== 'bigint') {
+        throw TypeError('sleep: ms must be a number')
+      }
+      throw RangeError('sleep: ms must be a number that is greater than 0 but less than Infinity')
+    }
+
+    Atomics.wait(nil, 0, 0, Number(ms))
+  }
+  module.exports = sleep
+} else {
+
+  function sleep (ms) {
+    // also filters out NaN, non-number types, including empty strings, but allows bigints
+    const valid = ms > 0 && ms < Infinity 
+    if (valid === false) {
+      if (typeof ms !== 'number' && typeof ms !== 'bigint') {
+        throw TypeError('sleep: ms must be a number')
+      }
+      throw RangeError('sleep: ms must be a number that is greater than 0 but less than Infinity')
+    }
+    const target = Date.now() + Number(ms)
+    while (target > Date.now()){}
+  }
+
+  module.exports = sleep
+
+}
+
+
+/***/ }),
+
 /***/ 3086:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 //      Copyright (c) 2012 Mathieu Turcotte
 //      Licensed under the MIT license.
 
-var Backoff = __nccwpck_require__(8845);
+var Backoff = __nccwpck_require__(6362);
 var ExponentialBackoffStrategy = __nccwpck_require__(6059);
 var FibonacciBackoffStrategy = __nccwpck_require__(7267);
 var FunctionCall = __nccwpck_require__(5237);
@@ -3429,7 +8940,7 @@ module.exports.call = function(fn, vargs, callback) {
 
 /***/ }),
 
-/***/ 8845:
+/***/ 6362:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 //      Copyright (c) 2012 Mathieu Turcotte
@@ -3511,7 +9022,7 @@ var events = __nccwpck_require__(2361);
 var precond = __nccwpck_require__(1231);
 var util = __nccwpck_require__(3837);
 
-var Backoff = __nccwpck_require__(8845);
+var Backoff = __nccwpck_require__(6362);
 var FibonacciBackoffStrategy = __nccwpck_require__(7267);
 
 // Wraps a function to be called in a backoff loop.
@@ -4146,6 +9657,1677 @@ function expand(str, isTop) {
 
 /***/ }),
 
+/***/ 3638:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.camelCase = exports.camelCaseTransformMerge = exports.camelCaseTransform = void 0;
+var tslib_1 = __nccwpck_require__(4351);
+var pascal_case_1 = __nccwpck_require__(5995);
+function camelCaseTransform(input, index) {
+    if (index === 0)
+        return input.toLowerCase();
+    return pascal_case_1.pascalCaseTransform(input, index);
+}
+exports.camelCaseTransform = camelCaseTransform;
+function camelCaseTransformMerge(input, index) {
+    if (index === 0)
+        return input.toLowerCase();
+    return pascal_case_1.pascalCaseTransformMerge(input);
+}
+exports.camelCaseTransformMerge = camelCaseTransformMerge;
+function camelCase(input, options) {
+    if (options === void 0) { options = {}; }
+    return pascal_case_1.pascalCase(input, tslib_1.__assign({ transform: camelCaseTransform }, options));
+}
+exports.camelCase = camelCase;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 8824:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.capitalCase = exports.capitalCaseTransform = void 0;
+var tslib_1 = __nccwpck_require__(4351);
+var no_case_1 = __nccwpck_require__(397);
+var upper_case_first_1 = __nccwpck_require__(6256);
+function capitalCaseTransform(input) {
+    return upper_case_first_1.upperCaseFirst(input.toLowerCase());
+}
+exports.capitalCaseTransform = capitalCaseTransform;
+function capitalCase(input, options) {
+    if (options === void 0) { options = {}; }
+    return no_case_1.noCase(input, tslib_1.__assign({ delimiter: " ", transform: capitalCaseTransform }, options));
+}
+exports.capitalCase = capitalCase;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 8707:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+const escapeStringRegexp = __nccwpck_require__(8691);
+const ansiStyles = __nccwpck_require__(2068);
+const stdoutColor = (__nccwpck_require__(9318).stdout);
+
+const template = __nccwpck_require__(2138);
+
+const isSimpleWindowsTerm = process.platform === 'win32' && !(process.env.TERM || '').toLowerCase().startsWith('xterm');
+
+// `supportsColor.level` → `ansiStyles.color[name]` mapping
+const levelMapping = ['ansi', 'ansi', 'ansi256', 'ansi16m'];
+
+// `color-convert` models to exclude from the Chalk API due to conflicts and such
+const skipModels = new Set(['gray']);
+
+const styles = Object.create(null);
+
+function applyOptions(obj, options) {
+	options = options || {};
+
+	// Detect level if not set manually
+	const scLevel = stdoutColor ? stdoutColor.level : 0;
+	obj.level = options.level === undefined ? scLevel : options.level;
+	obj.enabled = 'enabled' in options ? options.enabled : obj.level > 0;
+}
+
+function Chalk(options) {
+	// We check for this.template here since calling `chalk.constructor()`
+	// by itself will have a `this` of a previously constructed chalk object
+	if (!this || !(this instanceof Chalk) || this.template) {
+		const chalk = {};
+		applyOptions(chalk, options);
+
+		chalk.template = function () {
+			const args = [].slice.call(arguments);
+			return chalkTag.apply(null, [chalk.template].concat(args));
+		};
+
+		Object.setPrototypeOf(chalk, Chalk.prototype);
+		Object.setPrototypeOf(chalk.template, chalk);
+
+		chalk.template.constructor = Chalk;
+
+		return chalk.template;
+	}
+
+	applyOptions(this, options);
+}
+
+// Use bright blue on Windows as the normal blue color is illegible
+if (isSimpleWindowsTerm) {
+	ansiStyles.blue.open = '\u001B[94m';
+}
+
+for (const key of Object.keys(ansiStyles)) {
+	ansiStyles[key].closeRe = new RegExp(escapeStringRegexp(ansiStyles[key].close), 'g');
+
+	styles[key] = {
+		get() {
+			const codes = ansiStyles[key];
+			return build.call(this, this._styles ? this._styles.concat(codes) : [codes], this._empty, key);
+		}
+	};
+}
+
+styles.visible = {
+	get() {
+		return build.call(this, this._styles || [], true, 'visible');
+	}
+};
+
+ansiStyles.color.closeRe = new RegExp(escapeStringRegexp(ansiStyles.color.close), 'g');
+for (const model of Object.keys(ansiStyles.color.ansi)) {
+	if (skipModels.has(model)) {
+		continue;
+	}
+
+	styles[model] = {
+		get() {
+			const level = this.level;
+			return function () {
+				const open = ansiStyles.color[levelMapping[level]][model].apply(null, arguments);
+				const codes = {
+					open,
+					close: ansiStyles.color.close,
+					closeRe: ansiStyles.color.closeRe
+				};
+				return build.call(this, this._styles ? this._styles.concat(codes) : [codes], this._empty, model);
+			};
+		}
+	};
+}
+
+ansiStyles.bgColor.closeRe = new RegExp(escapeStringRegexp(ansiStyles.bgColor.close), 'g');
+for (const model of Object.keys(ansiStyles.bgColor.ansi)) {
+	if (skipModels.has(model)) {
+		continue;
+	}
+
+	const bgModel = 'bg' + model[0].toUpperCase() + model.slice(1);
+	styles[bgModel] = {
+		get() {
+			const level = this.level;
+			return function () {
+				const open = ansiStyles.bgColor[levelMapping[level]][model].apply(null, arguments);
+				const codes = {
+					open,
+					close: ansiStyles.bgColor.close,
+					closeRe: ansiStyles.bgColor.closeRe
+				};
+				return build.call(this, this._styles ? this._styles.concat(codes) : [codes], this._empty, model);
+			};
+		}
+	};
+}
+
+const proto = Object.defineProperties(() => {}, styles);
+
+function build(_styles, _empty, key) {
+	const builder = function () {
+		return applyStyle.apply(builder, arguments);
+	};
+
+	builder._styles = _styles;
+	builder._empty = _empty;
+
+	const self = this;
+
+	Object.defineProperty(builder, 'level', {
+		enumerable: true,
+		get() {
+			return self.level;
+		},
+		set(level) {
+			self.level = level;
+		}
+	});
+
+	Object.defineProperty(builder, 'enabled', {
+		enumerable: true,
+		get() {
+			return self.enabled;
+		},
+		set(enabled) {
+			self.enabled = enabled;
+		}
+	});
+
+	// See below for fix regarding invisible grey/dim combination on Windows
+	builder.hasGrey = this.hasGrey || key === 'gray' || key === 'grey';
+
+	// `__proto__` is used because we must return a function, but there is
+	// no way to create a function with a different prototype
+	builder.__proto__ = proto; // eslint-disable-line no-proto
+
+	return builder;
+}
+
+function applyStyle() {
+	// Support varags, but simply cast to string in case there's only one arg
+	const args = arguments;
+	const argsLen = args.length;
+	let str = String(arguments[0]);
+
+	if (argsLen === 0) {
+		return '';
+	}
+
+	if (argsLen > 1) {
+		// Don't slice `arguments`, it prevents V8 optimizations
+		for (let a = 1; a < argsLen; a++) {
+			str += ' ' + args[a];
+		}
+	}
+
+	if (!this.enabled || this.level <= 0 || !str) {
+		return this._empty ? '' : str;
+	}
+
+	// Turns out that on Windows dimmed gray text becomes invisible in cmd.exe,
+	// see https://github.com/chalk/chalk/issues/58
+	// If we're on Windows and we're dealing with a gray color, temporarily make 'dim' a noop.
+	const originalDim = ansiStyles.dim.open;
+	if (isSimpleWindowsTerm && this.hasGrey) {
+		ansiStyles.dim.open = '';
+	}
+
+	for (const code of this._styles.slice().reverse()) {
+		// Replace any instances already present with a re-opening code
+		// otherwise only the part of the string until said closing code
+		// will be colored, and the rest will simply be 'plain'.
+		str = code.open + str.replace(code.closeRe, code.open) + code.close;
+
+		// Close the styling before a linebreak and reopen
+		// after next line to fix a bleed issue on macOS
+		// https://github.com/chalk/chalk/pull/92
+		str = str.replace(/\r?\n/g, `${code.close}$&${code.open}`);
+	}
+
+	// Reset the original `dim` if we changed it to work around the Windows dimmed gray issue
+	ansiStyles.dim.open = originalDim;
+
+	return str;
+}
+
+function chalkTag(chalk, strings) {
+	if (!Array.isArray(strings)) {
+		// If chalk() was called by itself or with a string,
+		// return the string itself as a string.
+		return [].slice.call(arguments, 1).join(' ');
+	}
+
+	const args = [].slice.call(arguments, 2);
+	const parts = [strings.raw[0]];
+
+	for (let i = 1; i < strings.length; i++) {
+		parts.push(String(args[i - 1]).replace(/[{}\\]/g, '\\$&'));
+		parts.push(String(strings.raw[i]));
+	}
+
+	return template(chalk, parts.join(''));
+}
+
+Object.defineProperties(Chalk.prototype, styles);
+
+module.exports = Chalk(); // eslint-disable-line new-cap
+module.exports.supportsColor = stdoutColor;
+module.exports["default"] = module.exports; // For TypeScript
+
+
+/***/ }),
+
+/***/ 2138:
+/***/ ((module) => {
+
+"use strict";
+
+const TEMPLATE_REGEX = /(?:\\(u[a-f\d]{4}|x[a-f\d]{2}|.))|(?:\{(~)?(\w+(?:\([^)]*\))?(?:\.\w+(?:\([^)]*\))?)*)(?:[ \t]|(?=\r?\n)))|(\})|((?:.|[\r\n\f])+?)/gi;
+const STYLE_REGEX = /(?:^|\.)(\w+)(?:\(([^)]*)\))?/g;
+const STRING_REGEX = /^(['"])((?:\\.|(?!\1)[^\\])*)\1$/;
+const ESCAPE_REGEX = /\\(u[a-f\d]{4}|x[a-f\d]{2}|.)|([^\\])/gi;
+
+const ESCAPES = new Map([
+	['n', '\n'],
+	['r', '\r'],
+	['t', '\t'],
+	['b', '\b'],
+	['f', '\f'],
+	['v', '\v'],
+	['0', '\0'],
+	['\\', '\\'],
+	['e', '\u001B'],
+	['a', '\u0007']
+]);
+
+function unescape(c) {
+	if ((c[0] === 'u' && c.length === 5) || (c[0] === 'x' && c.length === 3)) {
+		return String.fromCharCode(parseInt(c.slice(1), 16));
+	}
+
+	return ESCAPES.get(c) || c;
+}
+
+function parseArguments(name, args) {
+	const results = [];
+	const chunks = args.trim().split(/\s*,\s*/g);
+	let matches;
+
+	for (const chunk of chunks) {
+		if (!isNaN(chunk)) {
+			results.push(Number(chunk));
+		} else if ((matches = chunk.match(STRING_REGEX))) {
+			results.push(matches[2].replace(ESCAPE_REGEX, (m, escape, chr) => escape ? unescape(escape) : chr));
+		} else {
+			throw new Error(`Invalid Chalk template style argument: ${chunk} (in style '${name}')`);
+		}
+	}
+
+	return results;
+}
+
+function parseStyle(style) {
+	STYLE_REGEX.lastIndex = 0;
+
+	const results = [];
+	let matches;
+
+	while ((matches = STYLE_REGEX.exec(style)) !== null) {
+		const name = matches[1];
+
+		if (matches[2]) {
+			const args = parseArguments(name, matches[2]);
+			results.push([name].concat(args));
+		} else {
+			results.push([name]);
+		}
+	}
+
+	return results;
+}
+
+function buildStyle(chalk, styles) {
+	const enabled = {};
+
+	for (const layer of styles) {
+		for (const style of layer.styles) {
+			enabled[style[0]] = layer.inverse ? null : style.slice(1);
+		}
+	}
+
+	let current = chalk;
+	for (const styleName of Object.keys(enabled)) {
+		if (Array.isArray(enabled[styleName])) {
+			if (!(styleName in current)) {
+				throw new Error(`Unknown Chalk style: ${styleName}`);
+			}
+
+			if (enabled[styleName].length > 0) {
+				current = current[styleName].apply(current, enabled[styleName]);
+			} else {
+				current = current[styleName];
+			}
+		}
+	}
+
+	return current;
+}
+
+module.exports = (chalk, tmp) => {
+	const styles = [];
+	const chunks = [];
+	let chunk = [];
+
+	// eslint-disable-next-line max-params
+	tmp.replace(TEMPLATE_REGEX, (m, escapeChar, inverse, style, close, chr) => {
+		if (escapeChar) {
+			chunk.push(unescape(escapeChar));
+		} else if (style) {
+			const str = chunk.join('');
+			chunk = [];
+			chunks.push(styles.length === 0 ? str : buildStyle(chalk, styles)(str));
+			styles.push({inverse, styles: parseStyle(style)});
+		} else if (close) {
+			if (styles.length === 0) {
+				throw new Error('Found extraneous } in Chalk template literal');
+			}
+
+			chunks.push(buildStyle(chalk, styles)(chunk.join('')));
+			chunk = [];
+			styles.pop();
+		} else {
+			chunk.push(chr);
+		}
+	});
+
+	chunks.push(chunk.join(''));
+
+	if (styles.length > 0) {
+		const errMsg = `Chalk template literal is missing ${styles.length} closing bracket${styles.length === 1 ? '' : 's'} (\`}\`)`;
+		throw new Error(errMsg);
+	}
+
+	return chunks.join('');
+};
+
+
+/***/ }),
+
+/***/ 9091:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+var tslib_1 = __nccwpck_require__(4351);
+tslib_1.__exportStar(__nccwpck_require__(3638), exports);
+tslib_1.__exportStar(__nccwpck_require__(8824), exports);
+tslib_1.__exportStar(__nccwpck_require__(6878), exports);
+tslib_1.__exportStar(__nccwpck_require__(2246), exports);
+tslib_1.__exportStar(__nccwpck_require__(3657), exports);
+tslib_1.__exportStar(__nccwpck_require__(397), exports);
+tslib_1.__exportStar(__nccwpck_require__(8452), exports);
+tslib_1.__exportStar(__nccwpck_require__(5995), exports);
+tslib_1.__exportStar(__nccwpck_require__(3553), exports);
+tslib_1.__exportStar(__nccwpck_require__(9229), exports);
+tslib_1.__exportStar(__nccwpck_require__(6213), exports);
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 7391:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+/* MIT license */
+var cssKeywords = __nccwpck_require__(8510);
+
+// NOTE: conversions should only return primitive values (i.e. arrays, or
+//       values that give correct `typeof` results).
+//       do not use box values types (i.e. Number(), String(), etc.)
+
+var reverseKeywords = {};
+for (var key in cssKeywords) {
+	if (cssKeywords.hasOwnProperty(key)) {
+		reverseKeywords[cssKeywords[key]] = key;
+	}
+}
+
+var convert = module.exports = {
+	rgb: {channels: 3, labels: 'rgb'},
+	hsl: {channels: 3, labels: 'hsl'},
+	hsv: {channels: 3, labels: 'hsv'},
+	hwb: {channels: 3, labels: 'hwb'},
+	cmyk: {channels: 4, labels: 'cmyk'},
+	xyz: {channels: 3, labels: 'xyz'},
+	lab: {channels: 3, labels: 'lab'},
+	lch: {channels: 3, labels: 'lch'},
+	hex: {channels: 1, labels: ['hex']},
+	keyword: {channels: 1, labels: ['keyword']},
+	ansi16: {channels: 1, labels: ['ansi16']},
+	ansi256: {channels: 1, labels: ['ansi256']},
+	hcg: {channels: 3, labels: ['h', 'c', 'g']},
+	apple: {channels: 3, labels: ['r16', 'g16', 'b16']},
+	gray: {channels: 1, labels: ['gray']}
+};
+
+// hide .channels and .labels properties
+for (var model in convert) {
+	if (convert.hasOwnProperty(model)) {
+		if (!('channels' in convert[model])) {
+			throw new Error('missing channels property: ' + model);
+		}
+
+		if (!('labels' in convert[model])) {
+			throw new Error('missing channel labels property: ' + model);
+		}
+
+		if (convert[model].labels.length !== convert[model].channels) {
+			throw new Error('channel and label counts mismatch: ' + model);
+		}
+
+		var channels = convert[model].channels;
+		var labels = convert[model].labels;
+		delete convert[model].channels;
+		delete convert[model].labels;
+		Object.defineProperty(convert[model], 'channels', {value: channels});
+		Object.defineProperty(convert[model], 'labels', {value: labels});
+	}
+}
+
+convert.rgb.hsl = function (rgb) {
+	var r = rgb[0] / 255;
+	var g = rgb[1] / 255;
+	var b = rgb[2] / 255;
+	var min = Math.min(r, g, b);
+	var max = Math.max(r, g, b);
+	var delta = max - min;
+	var h;
+	var s;
+	var l;
+
+	if (max === min) {
+		h = 0;
+	} else if (r === max) {
+		h = (g - b) / delta;
+	} else if (g === max) {
+		h = 2 + (b - r) / delta;
+	} else if (b === max) {
+		h = 4 + (r - g) / delta;
+	}
+
+	h = Math.min(h * 60, 360);
+
+	if (h < 0) {
+		h += 360;
+	}
+
+	l = (min + max) / 2;
+
+	if (max === min) {
+		s = 0;
+	} else if (l <= 0.5) {
+		s = delta / (max + min);
+	} else {
+		s = delta / (2 - max - min);
+	}
+
+	return [h, s * 100, l * 100];
+};
+
+convert.rgb.hsv = function (rgb) {
+	var rdif;
+	var gdif;
+	var bdif;
+	var h;
+	var s;
+
+	var r = rgb[0] / 255;
+	var g = rgb[1] / 255;
+	var b = rgb[2] / 255;
+	var v = Math.max(r, g, b);
+	var diff = v - Math.min(r, g, b);
+	var diffc = function (c) {
+		return (v - c) / 6 / diff + 1 / 2;
+	};
+
+	if (diff === 0) {
+		h = s = 0;
+	} else {
+		s = diff / v;
+		rdif = diffc(r);
+		gdif = diffc(g);
+		bdif = diffc(b);
+
+		if (r === v) {
+			h = bdif - gdif;
+		} else if (g === v) {
+			h = (1 / 3) + rdif - bdif;
+		} else if (b === v) {
+			h = (2 / 3) + gdif - rdif;
+		}
+		if (h < 0) {
+			h += 1;
+		} else if (h > 1) {
+			h -= 1;
+		}
+	}
+
+	return [
+		h * 360,
+		s * 100,
+		v * 100
+	];
+};
+
+convert.rgb.hwb = function (rgb) {
+	var r = rgb[0];
+	var g = rgb[1];
+	var b = rgb[2];
+	var h = convert.rgb.hsl(rgb)[0];
+	var w = 1 / 255 * Math.min(r, Math.min(g, b));
+
+	b = 1 - 1 / 255 * Math.max(r, Math.max(g, b));
+
+	return [h, w * 100, b * 100];
+};
+
+convert.rgb.cmyk = function (rgb) {
+	var r = rgb[0] / 255;
+	var g = rgb[1] / 255;
+	var b = rgb[2] / 255;
+	var c;
+	var m;
+	var y;
+	var k;
+
+	k = Math.min(1 - r, 1 - g, 1 - b);
+	c = (1 - r - k) / (1 - k) || 0;
+	m = (1 - g - k) / (1 - k) || 0;
+	y = (1 - b - k) / (1 - k) || 0;
+
+	return [c * 100, m * 100, y * 100, k * 100];
+};
+
+/**
+ * See https://en.m.wikipedia.org/wiki/Euclidean_distance#Squared_Euclidean_distance
+ * */
+function comparativeDistance(x, y) {
+	return (
+		Math.pow(x[0] - y[0], 2) +
+		Math.pow(x[1] - y[1], 2) +
+		Math.pow(x[2] - y[2], 2)
+	);
+}
+
+convert.rgb.keyword = function (rgb) {
+	var reversed = reverseKeywords[rgb];
+	if (reversed) {
+		return reversed;
+	}
+
+	var currentClosestDistance = Infinity;
+	var currentClosestKeyword;
+
+	for (var keyword in cssKeywords) {
+		if (cssKeywords.hasOwnProperty(keyword)) {
+			var value = cssKeywords[keyword];
+
+			// Compute comparative distance
+			var distance = comparativeDistance(rgb, value);
+
+			// Check if its less, if so set as closest
+			if (distance < currentClosestDistance) {
+				currentClosestDistance = distance;
+				currentClosestKeyword = keyword;
+			}
+		}
+	}
+
+	return currentClosestKeyword;
+};
+
+convert.keyword.rgb = function (keyword) {
+	return cssKeywords[keyword];
+};
+
+convert.rgb.xyz = function (rgb) {
+	var r = rgb[0] / 255;
+	var g = rgb[1] / 255;
+	var b = rgb[2] / 255;
+
+	// assume sRGB
+	r = r > 0.04045 ? Math.pow(((r + 0.055) / 1.055), 2.4) : (r / 12.92);
+	g = g > 0.04045 ? Math.pow(((g + 0.055) / 1.055), 2.4) : (g / 12.92);
+	b = b > 0.04045 ? Math.pow(((b + 0.055) / 1.055), 2.4) : (b / 12.92);
+
+	var x = (r * 0.4124) + (g * 0.3576) + (b * 0.1805);
+	var y = (r * 0.2126) + (g * 0.7152) + (b * 0.0722);
+	var z = (r * 0.0193) + (g * 0.1192) + (b * 0.9505);
+
+	return [x * 100, y * 100, z * 100];
+};
+
+convert.rgb.lab = function (rgb) {
+	var xyz = convert.rgb.xyz(rgb);
+	var x = xyz[0];
+	var y = xyz[1];
+	var z = xyz[2];
+	var l;
+	var a;
+	var b;
+
+	x /= 95.047;
+	y /= 100;
+	z /= 108.883;
+
+	x = x > 0.008856 ? Math.pow(x, 1 / 3) : (7.787 * x) + (16 / 116);
+	y = y > 0.008856 ? Math.pow(y, 1 / 3) : (7.787 * y) + (16 / 116);
+	z = z > 0.008856 ? Math.pow(z, 1 / 3) : (7.787 * z) + (16 / 116);
+
+	l = (116 * y) - 16;
+	a = 500 * (x - y);
+	b = 200 * (y - z);
+
+	return [l, a, b];
+};
+
+convert.hsl.rgb = function (hsl) {
+	var h = hsl[0] / 360;
+	var s = hsl[1] / 100;
+	var l = hsl[2] / 100;
+	var t1;
+	var t2;
+	var t3;
+	var rgb;
+	var val;
+
+	if (s === 0) {
+		val = l * 255;
+		return [val, val, val];
+	}
+
+	if (l < 0.5) {
+		t2 = l * (1 + s);
+	} else {
+		t2 = l + s - l * s;
+	}
+
+	t1 = 2 * l - t2;
+
+	rgb = [0, 0, 0];
+	for (var i = 0; i < 3; i++) {
+		t3 = h + 1 / 3 * -(i - 1);
+		if (t3 < 0) {
+			t3++;
+		}
+		if (t3 > 1) {
+			t3--;
+		}
+
+		if (6 * t3 < 1) {
+			val = t1 + (t2 - t1) * 6 * t3;
+		} else if (2 * t3 < 1) {
+			val = t2;
+		} else if (3 * t3 < 2) {
+			val = t1 + (t2 - t1) * (2 / 3 - t3) * 6;
+		} else {
+			val = t1;
+		}
+
+		rgb[i] = val * 255;
+	}
+
+	return rgb;
+};
+
+convert.hsl.hsv = function (hsl) {
+	var h = hsl[0];
+	var s = hsl[1] / 100;
+	var l = hsl[2] / 100;
+	var smin = s;
+	var lmin = Math.max(l, 0.01);
+	var sv;
+	var v;
+
+	l *= 2;
+	s *= (l <= 1) ? l : 2 - l;
+	smin *= lmin <= 1 ? lmin : 2 - lmin;
+	v = (l + s) / 2;
+	sv = l === 0 ? (2 * smin) / (lmin + smin) : (2 * s) / (l + s);
+
+	return [h, sv * 100, v * 100];
+};
+
+convert.hsv.rgb = function (hsv) {
+	var h = hsv[0] / 60;
+	var s = hsv[1] / 100;
+	var v = hsv[2] / 100;
+	var hi = Math.floor(h) % 6;
+
+	var f = h - Math.floor(h);
+	var p = 255 * v * (1 - s);
+	var q = 255 * v * (1 - (s * f));
+	var t = 255 * v * (1 - (s * (1 - f)));
+	v *= 255;
+
+	switch (hi) {
+		case 0:
+			return [v, t, p];
+		case 1:
+			return [q, v, p];
+		case 2:
+			return [p, v, t];
+		case 3:
+			return [p, q, v];
+		case 4:
+			return [t, p, v];
+		case 5:
+			return [v, p, q];
+	}
+};
+
+convert.hsv.hsl = function (hsv) {
+	var h = hsv[0];
+	var s = hsv[1] / 100;
+	var v = hsv[2] / 100;
+	var vmin = Math.max(v, 0.01);
+	var lmin;
+	var sl;
+	var l;
+
+	l = (2 - s) * v;
+	lmin = (2 - s) * vmin;
+	sl = s * vmin;
+	sl /= (lmin <= 1) ? lmin : 2 - lmin;
+	sl = sl || 0;
+	l /= 2;
+
+	return [h, sl * 100, l * 100];
+};
+
+// http://dev.w3.org/csswg/css-color/#hwb-to-rgb
+convert.hwb.rgb = function (hwb) {
+	var h = hwb[0] / 360;
+	var wh = hwb[1] / 100;
+	var bl = hwb[2] / 100;
+	var ratio = wh + bl;
+	var i;
+	var v;
+	var f;
+	var n;
+
+	// wh + bl cant be > 1
+	if (ratio > 1) {
+		wh /= ratio;
+		bl /= ratio;
+	}
+
+	i = Math.floor(6 * h);
+	v = 1 - bl;
+	f = 6 * h - i;
+
+	if ((i & 0x01) !== 0) {
+		f = 1 - f;
+	}
+
+	n = wh + f * (v - wh); // linear interpolation
+
+	var r;
+	var g;
+	var b;
+	switch (i) {
+		default:
+		case 6:
+		case 0: r = v; g = n; b = wh; break;
+		case 1: r = n; g = v; b = wh; break;
+		case 2: r = wh; g = v; b = n; break;
+		case 3: r = wh; g = n; b = v; break;
+		case 4: r = n; g = wh; b = v; break;
+		case 5: r = v; g = wh; b = n; break;
+	}
+
+	return [r * 255, g * 255, b * 255];
+};
+
+convert.cmyk.rgb = function (cmyk) {
+	var c = cmyk[0] / 100;
+	var m = cmyk[1] / 100;
+	var y = cmyk[2] / 100;
+	var k = cmyk[3] / 100;
+	var r;
+	var g;
+	var b;
+
+	r = 1 - Math.min(1, c * (1 - k) + k);
+	g = 1 - Math.min(1, m * (1 - k) + k);
+	b = 1 - Math.min(1, y * (1 - k) + k);
+
+	return [r * 255, g * 255, b * 255];
+};
+
+convert.xyz.rgb = function (xyz) {
+	var x = xyz[0] / 100;
+	var y = xyz[1] / 100;
+	var z = xyz[2] / 100;
+	var r;
+	var g;
+	var b;
+
+	r = (x * 3.2406) + (y * -1.5372) + (z * -0.4986);
+	g = (x * -0.9689) + (y * 1.8758) + (z * 0.0415);
+	b = (x * 0.0557) + (y * -0.2040) + (z * 1.0570);
+
+	// assume sRGB
+	r = r > 0.0031308
+		? ((1.055 * Math.pow(r, 1.0 / 2.4)) - 0.055)
+		: r * 12.92;
+
+	g = g > 0.0031308
+		? ((1.055 * Math.pow(g, 1.0 / 2.4)) - 0.055)
+		: g * 12.92;
+
+	b = b > 0.0031308
+		? ((1.055 * Math.pow(b, 1.0 / 2.4)) - 0.055)
+		: b * 12.92;
+
+	r = Math.min(Math.max(0, r), 1);
+	g = Math.min(Math.max(0, g), 1);
+	b = Math.min(Math.max(0, b), 1);
+
+	return [r * 255, g * 255, b * 255];
+};
+
+convert.xyz.lab = function (xyz) {
+	var x = xyz[0];
+	var y = xyz[1];
+	var z = xyz[2];
+	var l;
+	var a;
+	var b;
+
+	x /= 95.047;
+	y /= 100;
+	z /= 108.883;
+
+	x = x > 0.008856 ? Math.pow(x, 1 / 3) : (7.787 * x) + (16 / 116);
+	y = y > 0.008856 ? Math.pow(y, 1 / 3) : (7.787 * y) + (16 / 116);
+	z = z > 0.008856 ? Math.pow(z, 1 / 3) : (7.787 * z) + (16 / 116);
+
+	l = (116 * y) - 16;
+	a = 500 * (x - y);
+	b = 200 * (y - z);
+
+	return [l, a, b];
+};
+
+convert.lab.xyz = function (lab) {
+	var l = lab[0];
+	var a = lab[1];
+	var b = lab[2];
+	var x;
+	var y;
+	var z;
+
+	y = (l + 16) / 116;
+	x = a / 500 + y;
+	z = y - b / 200;
+
+	var y2 = Math.pow(y, 3);
+	var x2 = Math.pow(x, 3);
+	var z2 = Math.pow(z, 3);
+	y = y2 > 0.008856 ? y2 : (y - 16 / 116) / 7.787;
+	x = x2 > 0.008856 ? x2 : (x - 16 / 116) / 7.787;
+	z = z2 > 0.008856 ? z2 : (z - 16 / 116) / 7.787;
+
+	x *= 95.047;
+	y *= 100;
+	z *= 108.883;
+
+	return [x, y, z];
+};
+
+convert.lab.lch = function (lab) {
+	var l = lab[0];
+	var a = lab[1];
+	var b = lab[2];
+	var hr;
+	var h;
+	var c;
+
+	hr = Math.atan2(b, a);
+	h = hr * 360 / 2 / Math.PI;
+
+	if (h < 0) {
+		h += 360;
+	}
+
+	c = Math.sqrt(a * a + b * b);
+
+	return [l, c, h];
+};
+
+convert.lch.lab = function (lch) {
+	var l = lch[0];
+	var c = lch[1];
+	var h = lch[2];
+	var a;
+	var b;
+	var hr;
+
+	hr = h / 360 * 2 * Math.PI;
+	a = c * Math.cos(hr);
+	b = c * Math.sin(hr);
+
+	return [l, a, b];
+};
+
+convert.rgb.ansi16 = function (args) {
+	var r = args[0];
+	var g = args[1];
+	var b = args[2];
+	var value = 1 in arguments ? arguments[1] : convert.rgb.hsv(args)[2]; // hsv -> ansi16 optimization
+
+	value = Math.round(value / 50);
+
+	if (value === 0) {
+		return 30;
+	}
+
+	var ansi = 30
+		+ ((Math.round(b / 255) << 2)
+		| (Math.round(g / 255) << 1)
+		| Math.round(r / 255));
+
+	if (value === 2) {
+		ansi += 60;
+	}
+
+	return ansi;
+};
+
+convert.hsv.ansi16 = function (args) {
+	// optimization here; we already know the value and don't need to get
+	// it converted for us.
+	return convert.rgb.ansi16(convert.hsv.rgb(args), args[2]);
+};
+
+convert.rgb.ansi256 = function (args) {
+	var r = args[0];
+	var g = args[1];
+	var b = args[2];
+
+	// we use the extended greyscale palette here, with the exception of
+	// black and white. normal palette only has 4 greyscale shades.
+	if (r === g && g === b) {
+		if (r < 8) {
+			return 16;
+		}
+
+		if (r > 248) {
+			return 231;
+		}
+
+		return Math.round(((r - 8) / 247) * 24) + 232;
+	}
+
+	var ansi = 16
+		+ (36 * Math.round(r / 255 * 5))
+		+ (6 * Math.round(g / 255 * 5))
+		+ Math.round(b / 255 * 5);
+
+	return ansi;
+};
+
+convert.ansi16.rgb = function (args) {
+	var color = args % 10;
+
+	// handle greyscale
+	if (color === 0 || color === 7) {
+		if (args > 50) {
+			color += 3.5;
+		}
+
+		color = color / 10.5 * 255;
+
+		return [color, color, color];
+	}
+
+	var mult = (~~(args > 50) + 1) * 0.5;
+	var r = ((color & 1) * mult) * 255;
+	var g = (((color >> 1) & 1) * mult) * 255;
+	var b = (((color >> 2) & 1) * mult) * 255;
+
+	return [r, g, b];
+};
+
+convert.ansi256.rgb = function (args) {
+	// handle greyscale
+	if (args >= 232) {
+		var c = (args - 232) * 10 + 8;
+		return [c, c, c];
+	}
+
+	args -= 16;
+
+	var rem;
+	var r = Math.floor(args / 36) / 5 * 255;
+	var g = Math.floor((rem = args % 36) / 6) / 5 * 255;
+	var b = (rem % 6) / 5 * 255;
+
+	return [r, g, b];
+};
+
+convert.rgb.hex = function (args) {
+	var integer = ((Math.round(args[0]) & 0xFF) << 16)
+		+ ((Math.round(args[1]) & 0xFF) << 8)
+		+ (Math.round(args[2]) & 0xFF);
+
+	var string = integer.toString(16).toUpperCase();
+	return '000000'.substring(string.length) + string;
+};
+
+convert.hex.rgb = function (args) {
+	var match = args.toString(16).match(/[a-f0-9]{6}|[a-f0-9]{3}/i);
+	if (!match) {
+		return [0, 0, 0];
+	}
+
+	var colorString = match[0];
+
+	if (match[0].length === 3) {
+		colorString = colorString.split('').map(function (char) {
+			return char + char;
+		}).join('');
+	}
+
+	var integer = parseInt(colorString, 16);
+	var r = (integer >> 16) & 0xFF;
+	var g = (integer >> 8) & 0xFF;
+	var b = integer & 0xFF;
+
+	return [r, g, b];
+};
+
+convert.rgb.hcg = function (rgb) {
+	var r = rgb[0] / 255;
+	var g = rgb[1] / 255;
+	var b = rgb[2] / 255;
+	var max = Math.max(Math.max(r, g), b);
+	var min = Math.min(Math.min(r, g), b);
+	var chroma = (max - min);
+	var grayscale;
+	var hue;
+
+	if (chroma < 1) {
+		grayscale = min / (1 - chroma);
+	} else {
+		grayscale = 0;
+	}
+
+	if (chroma <= 0) {
+		hue = 0;
+	} else
+	if (max === r) {
+		hue = ((g - b) / chroma) % 6;
+	} else
+	if (max === g) {
+		hue = 2 + (b - r) / chroma;
+	} else {
+		hue = 4 + (r - g) / chroma + 4;
+	}
+
+	hue /= 6;
+	hue %= 1;
+
+	return [hue * 360, chroma * 100, grayscale * 100];
+};
+
+convert.hsl.hcg = function (hsl) {
+	var s = hsl[1] / 100;
+	var l = hsl[2] / 100;
+	var c = 1;
+	var f = 0;
+
+	if (l < 0.5) {
+		c = 2.0 * s * l;
+	} else {
+		c = 2.0 * s * (1.0 - l);
+	}
+
+	if (c < 1.0) {
+		f = (l - 0.5 * c) / (1.0 - c);
+	}
+
+	return [hsl[0], c * 100, f * 100];
+};
+
+convert.hsv.hcg = function (hsv) {
+	var s = hsv[1] / 100;
+	var v = hsv[2] / 100;
+
+	var c = s * v;
+	var f = 0;
+
+	if (c < 1.0) {
+		f = (v - c) / (1 - c);
+	}
+
+	return [hsv[0], c * 100, f * 100];
+};
+
+convert.hcg.rgb = function (hcg) {
+	var h = hcg[0] / 360;
+	var c = hcg[1] / 100;
+	var g = hcg[2] / 100;
+
+	if (c === 0.0) {
+		return [g * 255, g * 255, g * 255];
+	}
+
+	var pure = [0, 0, 0];
+	var hi = (h % 1) * 6;
+	var v = hi % 1;
+	var w = 1 - v;
+	var mg = 0;
+
+	switch (Math.floor(hi)) {
+		case 0:
+			pure[0] = 1; pure[1] = v; pure[2] = 0; break;
+		case 1:
+			pure[0] = w; pure[1] = 1; pure[2] = 0; break;
+		case 2:
+			pure[0] = 0; pure[1] = 1; pure[2] = v; break;
+		case 3:
+			pure[0] = 0; pure[1] = w; pure[2] = 1; break;
+		case 4:
+			pure[0] = v; pure[1] = 0; pure[2] = 1; break;
+		default:
+			pure[0] = 1; pure[1] = 0; pure[2] = w;
+	}
+
+	mg = (1.0 - c) * g;
+
+	return [
+		(c * pure[0] + mg) * 255,
+		(c * pure[1] + mg) * 255,
+		(c * pure[2] + mg) * 255
+	];
+};
+
+convert.hcg.hsv = function (hcg) {
+	var c = hcg[1] / 100;
+	var g = hcg[2] / 100;
+
+	var v = c + g * (1.0 - c);
+	var f = 0;
+
+	if (v > 0.0) {
+		f = c / v;
+	}
+
+	return [hcg[0], f * 100, v * 100];
+};
+
+convert.hcg.hsl = function (hcg) {
+	var c = hcg[1] / 100;
+	var g = hcg[2] / 100;
+
+	var l = g * (1.0 - c) + 0.5 * c;
+	var s = 0;
+
+	if (l > 0.0 && l < 0.5) {
+		s = c / (2 * l);
+	} else
+	if (l >= 0.5 && l < 1.0) {
+		s = c / (2 * (1 - l));
+	}
+
+	return [hcg[0], s * 100, l * 100];
+};
+
+convert.hcg.hwb = function (hcg) {
+	var c = hcg[1] / 100;
+	var g = hcg[2] / 100;
+	var v = c + g * (1.0 - c);
+	return [hcg[0], (v - c) * 100, (1 - v) * 100];
+};
+
+convert.hwb.hcg = function (hwb) {
+	var w = hwb[1] / 100;
+	var b = hwb[2] / 100;
+	var v = 1 - b;
+	var c = v - w;
+	var g = 0;
+
+	if (c < 1) {
+		g = (v - c) / (1 - c);
+	}
+
+	return [hwb[0], c * 100, g * 100];
+};
+
+convert.apple.rgb = function (apple) {
+	return [(apple[0] / 65535) * 255, (apple[1] / 65535) * 255, (apple[2] / 65535) * 255];
+};
+
+convert.rgb.apple = function (rgb) {
+	return [(rgb[0] / 255) * 65535, (rgb[1] / 255) * 65535, (rgb[2] / 255) * 65535];
+};
+
+convert.gray.rgb = function (args) {
+	return [args[0] / 100 * 255, args[0] / 100 * 255, args[0] / 100 * 255];
+};
+
+convert.gray.hsl = convert.gray.hsv = function (args) {
+	return [0, 0, args[0]];
+};
+
+convert.gray.hwb = function (gray) {
+	return [0, 100, gray[0]];
+};
+
+convert.gray.cmyk = function (gray) {
+	return [0, 0, 0, gray[0]];
+};
+
+convert.gray.lab = function (gray) {
+	return [gray[0], 0, 0];
+};
+
+convert.gray.hex = function (gray) {
+	var val = Math.round(gray[0] / 100 * 255) & 0xFF;
+	var integer = (val << 16) + (val << 8) + val;
+
+	var string = integer.toString(16).toUpperCase();
+	return '000000'.substring(string.length) + string;
+};
+
+convert.rgb.gray = function (rgb) {
+	var val = (rgb[0] + rgb[1] + rgb[2]) / 3;
+	return [val / 255 * 100];
+};
+
+
+/***/ }),
+
+/***/ 6931:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var conversions = __nccwpck_require__(7391);
+var route = __nccwpck_require__(880);
+
+var convert = {};
+
+var models = Object.keys(conversions);
+
+function wrapRaw(fn) {
+	var wrappedFn = function (args) {
+		if (args === undefined || args === null) {
+			return args;
+		}
+
+		if (arguments.length > 1) {
+			args = Array.prototype.slice.call(arguments);
+		}
+
+		return fn(args);
+	};
+
+	// preserve .conversion property if there is one
+	if ('conversion' in fn) {
+		wrappedFn.conversion = fn.conversion;
+	}
+
+	return wrappedFn;
+}
+
+function wrapRounded(fn) {
+	var wrappedFn = function (args) {
+		if (args === undefined || args === null) {
+			return args;
+		}
+
+		if (arguments.length > 1) {
+			args = Array.prototype.slice.call(arguments);
+		}
+
+		var result = fn(args);
+
+		// we're assuming the result is an array here.
+		// see notice in conversions.js; don't use box types
+		// in conversion functions.
+		if (typeof result === 'object') {
+			for (var len = result.length, i = 0; i < len; i++) {
+				result[i] = Math.round(result[i]);
+			}
+		}
+
+		return result;
+	};
+
+	// preserve .conversion property if there is one
+	if ('conversion' in fn) {
+		wrappedFn.conversion = fn.conversion;
+	}
+
+	return wrappedFn;
+}
+
+models.forEach(function (fromModel) {
+	convert[fromModel] = {};
+
+	Object.defineProperty(convert[fromModel], 'channels', {value: conversions[fromModel].channels});
+	Object.defineProperty(convert[fromModel], 'labels', {value: conversions[fromModel].labels});
+
+	var routes = route(fromModel);
+	var routeModels = Object.keys(routes);
+
+	routeModels.forEach(function (toModel) {
+		var fn = routes[toModel];
+
+		convert[fromModel][toModel] = wrapRounded(fn);
+		convert[fromModel][toModel].raw = wrapRaw(fn);
+	});
+});
+
+module.exports = convert;
+
+
+/***/ }),
+
+/***/ 880:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var conversions = __nccwpck_require__(7391);
+
+/*
+	this function routes a model to all other models.
+
+	all functions that are routed have a property `.conversion` attached
+	to the returned synthetic function. This property is an array
+	of strings, each with the steps in between the 'from' and 'to'
+	color models (inclusive).
+
+	conversions that are not possible simply are not included.
+*/
+
+function buildGraph() {
+	var graph = {};
+	// https://jsperf.com/object-keys-vs-for-in-with-closure/3
+	var models = Object.keys(conversions);
+
+	for (var len = models.length, i = 0; i < len; i++) {
+		graph[models[i]] = {
+			// http://jsperf.com/1-vs-infinity
+			// micro-opt, but this is simple.
+			distance: -1,
+			parent: null
+		};
+	}
+
+	return graph;
+}
+
+// https://en.wikipedia.org/wiki/Breadth-first_search
+function deriveBFS(fromModel) {
+	var graph = buildGraph();
+	var queue = [fromModel]; // unshift -> queue -> pop
+
+	graph[fromModel].distance = 0;
+
+	while (queue.length) {
+		var current = queue.pop();
+		var adjacents = Object.keys(conversions[current]);
+
+		for (var len = adjacents.length, i = 0; i < len; i++) {
+			var adjacent = adjacents[i];
+			var node = graph[adjacent];
+
+			if (node.distance === -1) {
+				node.distance = graph[current].distance + 1;
+				node.parent = current;
+				queue.unshift(adjacent);
+			}
+		}
+	}
+
+	return graph;
+}
+
+function link(from, to) {
+	return function (args) {
+		return to(from(args));
+	};
+}
+
+function wrapConversion(toModel, graph) {
+	var path = [graph[toModel].parent, toModel];
+	var fn = conversions[graph[toModel].parent][toModel];
+
+	var cur = graph[toModel].parent;
+	while (graph[cur].parent) {
+		path.unshift(graph[cur].parent);
+		fn = link(conversions[graph[cur].parent][cur], fn);
+		cur = graph[cur].parent;
+	}
+
+	fn.conversion = path;
+	return fn;
+}
+
+module.exports = function (fromModel) {
+	var graph = deriveBFS(fromModel);
+	var conversion = {};
+
+	var models = Object.keys(graph);
+	for (var len = models.length, i = 0; i < len; i++) {
+		var toModel = models[i];
+		var node = graph[toModel];
+
+		if (node.parent === null) {
+			// no possible conversion, or this node is the source model.
+			continue;
+		}
+
+		conversion[toModel] = wrapConversion(toModel, graph);
+	}
+
+	return conversion;
+};
+
+
+
+/***/ }),
+
+/***/ 8510:
+/***/ ((module) => {
+
+"use strict";
+
+
+module.exports = {
+	"aliceblue": [240, 248, 255],
+	"antiquewhite": [250, 235, 215],
+	"aqua": [0, 255, 255],
+	"aquamarine": [127, 255, 212],
+	"azure": [240, 255, 255],
+	"beige": [245, 245, 220],
+	"bisque": [255, 228, 196],
+	"black": [0, 0, 0],
+	"blanchedalmond": [255, 235, 205],
+	"blue": [0, 0, 255],
+	"blueviolet": [138, 43, 226],
+	"brown": [165, 42, 42],
+	"burlywood": [222, 184, 135],
+	"cadetblue": [95, 158, 160],
+	"chartreuse": [127, 255, 0],
+	"chocolate": [210, 105, 30],
+	"coral": [255, 127, 80],
+	"cornflowerblue": [100, 149, 237],
+	"cornsilk": [255, 248, 220],
+	"crimson": [220, 20, 60],
+	"cyan": [0, 255, 255],
+	"darkblue": [0, 0, 139],
+	"darkcyan": [0, 139, 139],
+	"darkgoldenrod": [184, 134, 11],
+	"darkgray": [169, 169, 169],
+	"darkgreen": [0, 100, 0],
+	"darkgrey": [169, 169, 169],
+	"darkkhaki": [189, 183, 107],
+	"darkmagenta": [139, 0, 139],
+	"darkolivegreen": [85, 107, 47],
+	"darkorange": [255, 140, 0],
+	"darkorchid": [153, 50, 204],
+	"darkred": [139, 0, 0],
+	"darksalmon": [233, 150, 122],
+	"darkseagreen": [143, 188, 143],
+	"darkslateblue": [72, 61, 139],
+	"darkslategray": [47, 79, 79],
+	"darkslategrey": [47, 79, 79],
+	"darkturquoise": [0, 206, 209],
+	"darkviolet": [148, 0, 211],
+	"deeppink": [255, 20, 147],
+	"deepskyblue": [0, 191, 255],
+	"dimgray": [105, 105, 105],
+	"dimgrey": [105, 105, 105],
+	"dodgerblue": [30, 144, 255],
+	"firebrick": [178, 34, 34],
+	"floralwhite": [255, 250, 240],
+	"forestgreen": [34, 139, 34],
+	"fuchsia": [255, 0, 255],
+	"gainsboro": [220, 220, 220],
+	"ghostwhite": [248, 248, 255],
+	"gold": [255, 215, 0],
+	"goldenrod": [218, 165, 32],
+	"gray": [128, 128, 128],
+	"green": [0, 128, 0],
+	"greenyellow": [173, 255, 47],
+	"grey": [128, 128, 128],
+	"honeydew": [240, 255, 240],
+	"hotpink": [255, 105, 180],
+	"indianred": [205, 92, 92],
+	"indigo": [75, 0, 130],
+	"ivory": [255, 255, 240],
+	"khaki": [240, 230, 140],
+	"lavender": [230, 230, 250],
+	"lavenderblush": [255, 240, 245],
+	"lawngreen": [124, 252, 0],
+	"lemonchiffon": [255, 250, 205],
+	"lightblue": [173, 216, 230],
+	"lightcoral": [240, 128, 128],
+	"lightcyan": [224, 255, 255],
+	"lightgoldenrodyellow": [250, 250, 210],
+	"lightgray": [211, 211, 211],
+	"lightgreen": [144, 238, 144],
+	"lightgrey": [211, 211, 211],
+	"lightpink": [255, 182, 193],
+	"lightsalmon": [255, 160, 122],
+	"lightseagreen": [32, 178, 170],
+	"lightskyblue": [135, 206, 250],
+	"lightslategray": [119, 136, 153],
+	"lightslategrey": [119, 136, 153],
+	"lightsteelblue": [176, 196, 222],
+	"lightyellow": [255, 255, 224],
+	"lime": [0, 255, 0],
+	"limegreen": [50, 205, 50],
+	"linen": [250, 240, 230],
+	"magenta": [255, 0, 255],
+	"maroon": [128, 0, 0],
+	"mediumaquamarine": [102, 205, 170],
+	"mediumblue": [0, 0, 205],
+	"mediumorchid": [186, 85, 211],
+	"mediumpurple": [147, 112, 219],
+	"mediumseagreen": [60, 179, 113],
+	"mediumslateblue": [123, 104, 238],
+	"mediumspringgreen": [0, 250, 154],
+	"mediumturquoise": [72, 209, 204],
+	"mediumvioletred": [199, 21, 133],
+	"midnightblue": [25, 25, 112],
+	"mintcream": [245, 255, 250],
+	"mistyrose": [255, 228, 225],
+	"moccasin": [255, 228, 181],
+	"navajowhite": [255, 222, 173],
+	"navy": [0, 0, 128],
+	"oldlace": [253, 245, 230],
+	"olive": [128, 128, 0],
+	"olivedrab": [107, 142, 35],
+	"orange": [255, 165, 0],
+	"orangered": [255, 69, 0],
+	"orchid": [218, 112, 214],
+	"palegoldenrod": [238, 232, 170],
+	"palegreen": [152, 251, 152],
+	"paleturquoise": [175, 238, 238],
+	"palevioletred": [219, 112, 147],
+	"papayawhip": [255, 239, 213],
+	"peachpuff": [255, 218, 185],
+	"peru": [205, 133, 63],
+	"pink": [255, 192, 203],
+	"plum": [221, 160, 221],
+	"powderblue": [176, 224, 230],
+	"purple": [128, 0, 128],
+	"rebeccapurple": [102, 51, 153],
+	"red": [255, 0, 0],
+	"rosybrown": [188, 143, 143],
+	"royalblue": [65, 105, 225],
+	"saddlebrown": [139, 69, 19],
+	"salmon": [250, 128, 114],
+	"sandybrown": [244, 164, 96],
+	"seagreen": [46, 139, 87],
+	"seashell": [255, 245, 238],
+	"sienna": [160, 82, 45],
+	"silver": [192, 192, 192],
+	"skyblue": [135, 206, 235],
+	"slateblue": [106, 90, 205],
+	"slategray": [112, 128, 144],
+	"slategrey": [112, 128, 144],
+	"snow": [255, 250, 250],
+	"springgreen": [0, 255, 127],
+	"steelblue": [70, 130, 180],
+	"tan": [210, 180, 140],
+	"teal": [0, 128, 128],
+	"thistle": [216, 191, 216],
+	"tomato": [255, 99, 71],
+	"turquoise": [64, 224, 208],
+	"violet": [238, 130, 238],
+	"wheat": [245, 222, 179],
+	"white": [255, 255, 255],
+	"whitesmoke": [245, 245, 245],
+	"yellow": [255, 255, 0],
+	"yellowgreen": [154, 205, 50]
+};
+
+
+/***/ }),
+
 /***/ 5443:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -4381,6 +11563,25 @@ var isArray = Array.isArray || function (xs) {
 
 /***/ }),
 
+/***/ 6878:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.constantCase = void 0;
+var tslib_1 = __nccwpck_require__(4351);
+var no_case_1 = __nccwpck_require__(397);
+var upper_case_1 = __nccwpck_require__(5997);
+function constantCase(input, options) {
+    if (options === void 0) { options = {}; }
+    return no_case_1.noCase(input, tslib_1.__assign({ delimiter: "_", transform: upper_case_1.upperCase }, options));
+}
+exports.constantCase = constantCase;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
 /***/ 9805:
 /***/ ((module, exports, __nccwpck_require__) => {
 
@@ -4524,6 +11725,43 @@ DelayedStream.prototype._checkIfMaxDataSizeExceeded = function() {
 
 /***/ }),
 
+/***/ 2246:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.dotCase = void 0;
+var tslib_1 = __nccwpck_require__(4351);
+var no_case_1 = __nccwpck_require__(397);
+function dotCase(input, options) {
+    if (options === void 0) { options = {}; }
+    return no_case_1.noCase(input, tslib_1.__assign({ delimiter: "." }, options));
+}
+exports.dotCase = dotCase;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 8691:
+/***/ ((module) => {
+
+"use strict";
+
+
+var matchOperatorsRe = /[|\\{}()[\]^$+*?.]/g;
+
+module.exports = function (str) {
+	if (typeof str !== 'string') {
+		throw new TypeError('Expected a string');
+	}
+
+	return str.replace(matchOperatorsRe, '\\$&');
+};
+
+
+/***/ }),
+
 /***/ 776:
 /***/ ((module) => {
 
@@ -4632,6 +11870,598 @@ module.exports = function isExtractableFile(value) {
     value instanceof ReactNativeFile
   );
 };
+
+
+/***/ }),
+
+/***/ 4826:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const validator = __nccwpck_require__(4174)
+const parse = __nccwpck_require__(6214)
+const redactor = __nccwpck_require__(7333)
+const restorer = __nccwpck_require__(8806)
+const { groupRedact, nestedRedact } = __nccwpck_require__(4865)
+const state = __nccwpck_require__(1012)
+const rx = __nccwpck_require__(9158)
+const validate = validator()
+const noop = (o) => o
+noop.restore = noop
+
+const DEFAULT_CENSOR = '[REDACTED]'
+fastRedact.rx = rx
+fastRedact.validator = validator
+
+module.exports = fastRedact
+
+function fastRedact (opts = {}) {
+  const paths = Array.from(new Set(opts.paths || []))
+  const serialize = 'serialize' in opts ? (
+    opts.serialize === false ? opts.serialize
+      : (typeof opts.serialize === 'function' ? opts.serialize : JSON.stringify)
+  ) : JSON.stringify
+  const remove = opts.remove
+  if (remove === true && serialize !== JSON.stringify) {
+    throw Error('fast-redact – remove option may only be set when serializer is JSON.stringify')
+  }
+  const censor = remove === true
+    ? undefined
+    : 'censor' in opts ? opts.censor : DEFAULT_CENSOR
+
+  const isCensorFct = typeof censor === 'function'
+  const censorFctTakesPath = isCensorFct && censor.length > 1
+
+  if (paths.length === 0) return serialize || noop
+
+  validate({ paths, serialize, censor })
+
+  const { wildcards, wcLen, secret } = parse({ paths, censor })
+
+  const compileRestore = restorer({ secret, wcLen })
+  const strict = 'strict' in opts ? opts.strict : true
+
+  return redactor({ secret, wcLen, serialize, strict, isCensorFct, censorFctTakesPath }, state({
+    secret,
+    censor,
+    compileRestore,
+    serialize,
+    groupRedact,
+    nestedRedact,
+    wildcards,
+    wcLen
+  }))
+}
+
+
+/***/ }),
+
+/***/ 4865:
+/***/ ((module) => {
+
+"use strict";
+
+
+module.exports = {
+  groupRedact,
+  groupRestore,
+  nestedRedact,
+  nestedRestore
+}
+
+function groupRestore ({ keys, values, target }) {
+  if (target == null) return
+  const length = keys.length
+  for (var i = 0; i < length; i++) {
+    const k = keys[i]
+    target[k] = values[i]
+  }
+}
+
+function groupRedact (o, path, censor, isCensorFct, censorFctTakesPath) {
+  const target = get(o, path)
+  if (target == null) return { keys: null, values: null, target: null, flat: true }
+  const keys = Object.keys(target)
+  const keysLength = keys.length
+  const pathLength = path.length
+  const pathWithKey = censorFctTakesPath ? [...path] : undefined
+  const values = new Array(keysLength)
+
+  for (var i = 0; i < keysLength; i++) {
+    const key = keys[i]
+    values[i] = target[key]
+
+    if (censorFctTakesPath) {
+      pathWithKey[pathLength] = key
+      target[key] = censor(target[key], pathWithKey)
+    } else if (isCensorFct) {
+      target[key] = censor(target[key])
+    } else {
+      target[key] = censor
+    }
+  }
+  return { keys, values, target, flat: true }
+}
+
+function nestedRestore (arr) {
+  const length = arr.length
+  for (var i = 0; i < length; i++) {
+    const { key, target, value } = arr[i]
+    if (has(target, key)) {
+      target[key] = value
+    }
+    /* istanbul ignore else */
+    if (typeof target === 'object') {
+      const targetKeys = Object.keys(target)
+      for (var j = 0; j < targetKeys.length; j++) {
+        const tKey = targetKeys[j]
+        const subTarget = target[tKey]
+        if (has(subTarget, key)) {
+          subTarget[key] = value
+        }
+      }
+    }
+  }
+}
+
+function nestedRedact (store, o, path, ns, censor, isCensorFct, censorFctTakesPath) {
+  const target = get(o, path)
+  if (target == null) return
+  const keys = Object.keys(target)
+  const keysLength = keys.length
+  for (var i = 0; i < keysLength; i++) {
+    const key = keys[i]
+    const { value, parent, exists } =
+      specialSet(target, key, path, ns, censor, isCensorFct, censorFctTakesPath)
+
+    if (exists === true && parent !== null) {
+      store.push({ key: ns[ns.length - 1], target: parent, value })
+    }
+  }
+  return store
+}
+
+function has (obj, prop) {
+  return obj !== undefined && obj !== null
+    ? ('hasOwn' in Object ? Object.hasOwn(obj, prop) : Object.prototype.hasOwnProperty.call(obj, prop))
+    : false
+}
+
+function specialSet (o, k, path, afterPath, censor, isCensorFct, censorFctTakesPath) {
+  const afterPathLen = afterPath.length
+  const lastPathIndex = afterPathLen - 1
+  const originalKey = k
+  var i = -1
+  var n
+  var nv
+  var ov
+  var oov = null
+  var exists = true
+  var wc = null
+  ov = n = o[k]
+  if (typeof n !== 'object') return { value: null, parent: null, exists }
+  while (n != null && ++i < afterPathLen) {
+    k = afterPath[i]
+    oov = ov
+    if (k !== '*' && !wc && !(typeof n === 'object' && k in n)) {
+      exists = false
+      break
+    }
+    if (k === '*') {
+      wc = k
+      if (i !== lastPathIndex) {
+        continue
+      }
+    }
+    if (wc) {
+      const wcKeys = Object.keys(n)
+      for (var j = 0; j < wcKeys.length; j++) {
+        const wck = wcKeys[j]
+        const wcov = n[wck]
+        const kIsWc = k === '*'
+        if (kIsWc || (typeof wcov === 'object' && wcov !== null && k in wcov)) {
+          if (kIsWc) {
+            ov = wcov
+          } else {
+            ov = wcov[k]
+          }
+          nv = (i !== lastPathIndex)
+            ? ov
+            : (isCensorFct
+              ? (censorFctTakesPath ? censor(ov, [...path, originalKey, ...afterPath]) : censor(ov))
+              : censor)
+          if (kIsWc) {
+            n[wck] = nv
+          } else {
+            if (wcov[k] === nv) {
+              exists = false
+            } else {
+              wcov[k] = (nv === undefined && censor !== undefined) || (has(wcov, k) && nv === ov) ? wcov[k] : nv
+            }
+          }
+        }
+      }
+      wc = null
+    } else {
+      ov = n[k]
+      nv = (i !== lastPathIndex)
+        ? ov
+        : (isCensorFct
+          ? (censorFctTakesPath ? censor(ov, [...path, originalKey, ...afterPath]) : censor(ov))
+          : censor)
+      n[k] = (has(n, k) && nv === ov) || (nv === undefined && censor !== undefined) ? n[k] : nv
+      n = n[k]
+    }
+    if (typeof n !== 'object') break
+    // prevent circular structure, see https://github.com/pinojs/pino/issues/1513
+    if (ov === oov) {
+      exists = false
+    }
+  }
+  return { value: ov, parent: oov, exists }
+}
+
+function get (o, p) {
+  var i = -1
+  var l = p.length
+  var n = o
+  while (n != null && ++i < l) {
+    n = n[p[i]]
+  }
+  return n
+}
+
+
+/***/ }),
+
+/***/ 6214:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const rx = __nccwpck_require__(9158)
+
+module.exports = parse
+
+function parse ({ paths }) {
+  const wildcards = []
+  var wcLen = 0
+  const secret = paths.reduce(function (o, strPath, ix) {
+    var path = strPath.match(rx).map((p) => p.replace(/'|"|`/g, ''))
+    const leadingBracket = strPath[0] === '['
+    path = path.map((p) => {
+      if (p[0] === '[') return p.substr(1, p.length - 2)
+      else return p
+    })
+    const star = path.indexOf('*')
+    if (star > -1) {
+      const before = path.slice(0, star)
+      const beforeStr = before.join('.')
+      const after = path.slice(star + 1, path.length)
+      const nested = after.length > 0
+      wcLen++
+      wildcards.push({
+        before,
+        beforeStr,
+        after,
+        nested
+      })
+    } else {
+      o[strPath] = {
+        path: path,
+        val: undefined,
+        precensored: false,
+        circle: '',
+        escPath: JSON.stringify(strPath),
+        leadingBracket: leadingBracket
+      }
+    }
+    return o
+  }, {})
+
+  return { wildcards, wcLen, secret }
+}
+
+
+/***/ }),
+
+/***/ 7333:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const rx = __nccwpck_require__(9158)
+
+module.exports = redactor
+
+function redactor ({ secret, serialize, wcLen, strict, isCensorFct, censorFctTakesPath }, state) {
+  /* eslint-disable-next-line */
+  const redact = Function('o', `
+    if (typeof o !== 'object' || o == null) {
+      ${strictImpl(strict, serialize)}
+    }
+    const { censor, secret } = this
+    ${redactTmpl(secret, isCensorFct, censorFctTakesPath)}
+    this.compileRestore()
+    ${dynamicRedactTmpl(wcLen > 0, isCensorFct, censorFctTakesPath)}
+    ${resultTmpl(serialize)}
+  `).bind(state)
+
+  if (serialize === false) {
+    redact.restore = (o) => state.restore(o)
+  }
+
+  return redact
+}
+
+function redactTmpl (secret, isCensorFct, censorFctTakesPath) {
+  return Object.keys(secret).map((path) => {
+    const { escPath, leadingBracket, path: arrPath } = secret[path]
+    const skip = leadingBracket ? 1 : 0
+    const delim = leadingBracket ? '' : '.'
+    const hops = []
+    var match
+    while ((match = rx.exec(path)) !== null) {
+      const [ , ix ] = match
+      const { index, input } = match
+      if (index > skip) hops.push(input.substring(0, index - (ix ? 0 : 1)))
+    }
+    var existence = hops.map((p) => `o${delim}${p}`).join(' && ')
+    if (existence.length === 0) existence += `o${delim}${path} != null`
+    else existence += ` && o${delim}${path} != null`
+
+    const circularDetection = `
+      switch (true) {
+        ${hops.reverse().map((p) => `
+          case o${delim}${p} === censor:
+            secret[${escPath}].circle = ${JSON.stringify(p)}
+            break
+        `).join('\n')}
+      }
+    `
+
+    const censorArgs = censorFctTakesPath
+      ? `val, ${JSON.stringify(arrPath)}`
+      : `val`
+
+    return `
+      if (${existence}) {
+        const val = o${delim}${path}
+        if (val === censor) {
+          secret[${escPath}].precensored = true
+        } else {
+          secret[${escPath}].val = val
+          o${delim}${path} = ${isCensorFct ? `censor(${censorArgs})` : 'censor'}
+          ${circularDetection}
+        }
+      }
+    `
+  }).join('\n')
+}
+
+function dynamicRedactTmpl (hasWildcards, isCensorFct, censorFctTakesPath) {
+  return hasWildcards === true ? `
+    {
+      const { wildcards, wcLen, groupRedact, nestedRedact } = this
+      for (var i = 0; i < wcLen; i++) {
+        const { before, beforeStr, after, nested } = wildcards[i]
+        if (nested === true) {
+          secret[beforeStr] = secret[beforeStr] || []
+          nestedRedact(secret[beforeStr], o, before, after, censor, ${isCensorFct}, ${censorFctTakesPath})
+        } else secret[beforeStr] = groupRedact(o, before, censor, ${isCensorFct}, ${censorFctTakesPath})
+      }
+    }
+  ` : ''
+}
+
+function resultTmpl (serialize) {
+  return serialize === false ? `return o` : `
+    var s = this.serialize(o)
+    this.restore(o)
+    return s
+  `
+}
+
+function strictImpl (strict, serialize) {
+  return strict === true
+    ? `throw Error('fast-redact: primitives cannot be redacted')`
+    : serialize === false ? `return o` : `return this.serialize(o)`
+}
+
+
+/***/ }),
+
+/***/ 8806:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const { groupRestore, nestedRestore } = __nccwpck_require__(4865)
+
+module.exports = restorer
+
+function restorer ({ secret, wcLen }) {
+  return function compileRestore () {
+    if (this.restore) return
+    const paths = Object.keys(secret)
+    const resetters = resetTmpl(secret, paths)
+    const hasWildcards = wcLen > 0
+    const state = hasWildcards ? { secret, groupRestore, nestedRestore } : { secret }
+    /* eslint-disable-next-line */
+    this.restore = Function(
+      'o',
+      restoreTmpl(resetters, paths, hasWildcards)
+    ).bind(state)
+  }
+}
+
+/**
+ * Mutates the original object to be censored by restoring its original values
+ * prior to censoring.
+ *
+ * @param {object} secret Compiled object describing which target fields should
+ * be censored and the field states.
+ * @param {string[]} paths The list of paths to censor as provided at
+ * initialization time.
+ *
+ * @returns {string} String of JavaScript to be used by `Function()`. The
+ * string compiles to the function that does the work in the description.
+ */
+function resetTmpl (secret, paths) {
+  return paths.map((path) => {
+    const { circle, escPath, leadingBracket } = secret[path]
+    const delim = leadingBracket ? '' : '.'
+    const reset = circle
+      ? `o.${circle} = secret[${escPath}].val`
+      : `o${delim}${path} = secret[${escPath}].val`
+    const clear = `secret[${escPath}].val = undefined`
+    return `
+      if (secret[${escPath}].val !== undefined) {
+        try { ${reset} } catch (e) {}
+        ${clear}
+      }
+    `
+  }).join('')
+}
+
+/**
+ * Creates the body of the restore function
+ *
+ * Restoration of the redacted object happens
+ * backwards, in reverse order of redactions,
+ * so that repeated redactions on the same object
+ * property can be eventually rolled back to the
+ * original value.
+ *
+ * This way dynamic redactions are restored first,
+ * starting from the last one working backwards and
+ * followed by the static ones.
+ *
+ * @returns {string} the body of the restore function
+ */
+function restoreTmpl (resetters, paths, hasWildcards) {
+  const dynamicReset = hasWildcards === true ? `
+    const keys = Object.keys(secret)
+    const len = keys.length
+    for (var i = len - 1; i >= ${paths.length}; i--) {
+      const k = keys[i]
+      const o = secret[k]
+      if (o.flat === true) this.groupRestore(o)
+      else this.nestedRestore(o)
+      secret[k] = null
+    }
+  ` : ''
+
+  return `
+    const secret = this.secret
+    ${dynamicReset}
+    ${resetters}
+    return o
+  `
+}
+
+
+/***/ }),
+
+/***/ 9158:
+/***/ ((module) => {
+
+"use strict";
+
+
+module.exports = /[^.[\]]+|\[((?:.)*?)\]/g
+
+/*
+Regular expression explanation:
+
+Alt 1: /[^.[\]]+/ - Match one or more characters that are *not* a dot (.)
+                    opening square bracket ([) or closing square bracket (])
+
+Alt 2: /\[((?:.)*?)\]/ - If the char IS dot or square bracket, then create a capture
+                         group (which will be capture group $1) that matches anything
+                         within square brackets. Expansion is lazy so it will
+                         stop matching as soon as the first closing bracket is met `]`
+                         (rather than continuing to match until the final closing bracket).
+*/
+
+
+/***/ }),
+
+/***/ 1012:
+/***/ ((module) => {
+
+"use strict";
+
+
+module.exports = state
+
+function state (o) {
+  const {
+    secret,
+    censor,
+    compileRestore,
+    serialize,
+    groupRedact,
+    nestedRedact,
+    wildcards,
+    wcLen
+  } = o
+  const builder = [{ secret, censor, compileRestore }]
+  if (serialize !== false) builder.push({ serialize })
+  if (wcLen > 0) builder.push({ groupRedact, nestedRedact, wildcards, wcLen })
+  return Object.assign(...builder)
+}
+
+
+/***/ }),
+
+/***/ 4174:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const { createContext, runInContext } = __nccwpck_require__(5484)
+
+module.exports = validator
+
+function validator (opts = {}) {
+  const {
+    ERR_PATHS_MUST_BE_STRINGS = () => 'fast-redact - Paths must be (non-empty) strings',
+    ERR_INVALID_PATH = (s) => `fast-redact – Invalid path (${s})`
+  } = opts
+
+  return function validate ({ paths }) {
+    paths.forEach((s) => {
+      if (typeof s !== 'string') {
+        throw Error(ERR_PATHS_MUST_BE_STRINGS())
+      }
+      try {
+        if (/〇/.test(s)) throw Error()
+        const proxy = new Proxy({}, { get: () => proxy, set: () => { throw Error() } })
+        const expr = (s[0] === '[' ? '' : '.') + s.replace(/^\*/, '〇').replace(/\.\*/g, '.〇').replace(/\[\*\]/g, '[〇]')
+        if (/\n|\r|;/.test(expr)) throw Error()
+        if (/\/\*/.test(expr)) throw Error()
+        runInContext(`
+          (function () {
+            'use strict'
+            o${expr}
+            if ([o${expr}].length !== 1) throw Error()
+          })()
+        `, createContext({ o: proxy, 〇: null }), {
+          codeGeneration: { strings: false, wasm: false }
+        })
+      } catch (e) {
+        throw Error(ERR_INVALID_PATH(s))
+      }
+    })
+  }
+}
 
 
 /***/ }),
@@ -10114,7 +17944,7 @@ function printPrefixedLines(lines) {
 
 /***/ }),
 
-/***/ 6011:
+/***/ 460:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -10318,7 +18148,7 @@ exports.print = print;
 
 var _blockString = __nccwpck_require__(4515);
 
-var _printString = __nccwpck_require__(6011);
+var _printString = __nccwpck_require__(460);
 
 var _visitor = __nccwpck_require__(5678);
 
@@ -11170,6 +19000,130 @@ function getVisitFn(visitor, kind, isLeaving) {
   return isLeaving ? leave : enter;
 }
 
+
+/***/ }),
+
+/***/ 1621:
+/***/ ((module) => {
+
+"use strict";
+
+module.exports = (flag, argv) => {
+	argv = argv || process.argv;
+	const prefix = flag.startsWith('-') ? '' : (flag.length === 1 ? '-' : '--');
+	const pos = argv.indexOf(prefix + flag);
+	const terminatorPos = argv.indexOf('--');
+	return pos !== -1 && (terminatorPos === -1 ? true : pos < terminatorPos);
+};
+
+
+/***/ }),
+
+/***/ 3657:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.headerCase = void 0;
+var tslib_1 = __nccwpck_require__(4351);
+var capital_case_1 = __nccwpck_require__(8824);
+function headerCase(input, options) {
+    if (options === void 0) { options = {}; }
+    return capital_case_1.capitalCase(input, tslib_1.__assign({ delimiter: "-" }, options));
+}
+exports.headerCase = headerCase;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 1531:
+/***/ ((__unused_webpack_module, exports) => {
+
+// Copyright 2014, 2015, 2016, 2017, 2018 Simon Lydell
+// License: MIT. (See LICENSE.)
+
+Object.defineProperty(exports, "__esModule", ({
+  value: true
+}))
+
+// This regex comes from regex.coffee, and is inserted here by generate-index.js
+// (run `npm run build`).
+exports["default"] = /((['"])(?:(?!\2|\\).|\\(?:\r\n|[\s\S]))*(\2)?|`(?:[^`\\$]|\\[\s\S]|\$(?!\{)|\$\{(?:[^{}]|\{[^}]*\}?)*\}?)*(`)?)|(\/\/.*)|(\/\*(?:[^*]|\*(?!\/))*(\*\/)?)|(\/(?!\*)(?:\[(?:(?![\]\\]).|\\.)*\]|(?![\/\]\\]).|\\.)+\/(?:(?!\s*(?:\b|[\u0080-\uFFFF$\\'"~({]|[+\-!](?!=)|\.?\d))|[gmiyus]{1,6}\b(?![\u0080-\uFFFF$\\]|\s*(?:[+\-*%&|^<>!=?({]|\/(?![\/*])))))|(0[xX][\da-fA-F]+|0[oO][0-7]+|0[bB][01]+|(?:\d*\.\d+|\d+\.?)(?:[eE][+-]?\d+)?)|((?!\d)(?:(?!\s)[$\w\u0080-\uFFFF]|\\u[\da-fA-F]{4}|\\u\{[\da-fA-F]+\})+)|(--|\+\+|&&|\|\||=>|\.{3}|(?:[+\-\/%&|^]|\*{1,2}|<{1,2}|>{1,3}|!=?|={1,2})=?|[?~.,:;[\](){}])|(\s+)|(^$|[\s\S])/g
+
+exports.matchToToken = function(match) {
+  var token = {type: "invalid", value: match[0], closed: undefined}
+       if (match[ 1]) token.type = "string" , token.closed = !!(match[3] || match[4])
+  else if (match[ 5]) token.type = "comment"
+  else if (match[ 6]) token.type = "comment", token.closed = !!match[7]
+  else if (match[ 8]) token.type = "regex"
+  else if (match[ 9]) token.type = "number"
+  else if (match[10]) token.type = "name"
+  else if (match[11]) token.type = "punctuator"
+  else if (match[12]) token.type = "whitespace"
+  return token
+}
+
+
+/***/ }),
+
+/***/ 8387:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.lowerCase = exports.localeLowerCase = void 0;
+/**
+ * Source: ftp://ftp.unicode.org/Public/UCD/latest/ucd/SpecialCasing.txt
+ */
+var SUPPORTED_LOCALE = {
+    tr: {
+        regexp: /\u0130|\u0049|\u0049\u0307/g,
+        map: {
+            İ: "\u0069",
+            I: "\u0131",
+            İ: "\u0069",
+        },
+    },
+    az: {
+        regexp: /\u0130/g,
+        map: {
+            İ: "\u0069",
+            I: "\u0131",
+            İ: "\u0069",
+        },
+    },
+    lt: {
+        regexp: /\u0049|\u004A|\u012E|\u00CC|\u00CD|\u0128/g,
+        map: {
+            I: "\u0069\u0307",
+            J: "\u006A\u0307",
+            Į: "\u012F\u0307",
+            Ì: "\u0069\u0307\u0300",
+            Í: "\u0069\u0307\u0301",
+            Ĩ: "\u0069\u0307\u0303",
+        },
+    },
+};
+/**
+ * Localized lower case.
+ */
+function localeLowerCase(str, locale) {
+    var lang = SUPPORTED_LOCALE[locale.toLowerCase()];
+    if (lang)
+        return lowerCase(str.replace(lang.regexp, function (m) { return lang.map[m]; }));
+    return lowerCase(str);
+}
+exports.localeLowerCase = localeLowerCase;
+/**
+ * Lower case as a function.
+ */
+function lowerCase(str) {
+    return str.toLowerCase();
+}
+exports.lowerCase = lowerCase;
+//# sourceMappingURL=index.js.map
 
 /***/ }),
 
@@ -12339,6 +20293,48 @@ function regExpEscape (s) {
   return s.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')
 }
 
+
+/***/ }),
+
+/***/ 397:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.noCase = void 0;
+var lower_case_1 = __nccwpck_require__(8387);
+// Support camel case ("camelCase" -> "camel Case" and "CAMELCase" -> "CAMEL Case").
+var DEFAULT_SPLIT_REGEXP = [/([a-z0-9])([A-Z])/g, /([A-Z])([A-Z][a-z])/g];
+// Remove all non-word characters.
+var DEFAULT_STRIP_REGEXP = /[^A-Z0-9]+/gi;
+/**
+ * Normalize the string into something other libraries can manipulate easier.
+ */
+function noCase(input, options) {
+    if (options === void 0) { options = {}; }
+    var _a = options.splitRegexp, splitRegexp = _a === void 0 ? DEFAULT_SPLIT_REGEXP : _a, _b = options.stripRegexp, stripRegexp = _b === void 0 ? DEFAULT_STRIP_REGEXP : _b, _c = options.transform, transform = _c === void 0 ? lower_case_1.lowerCase : _c, _d = options.delimiter, delimiter = _d === void 0 ? " " : _d;
+    var result = replace(replace(input, splitRegexp, "$1\0$2"), stripRegexp, "\0");
+    var start = 0;
+    var end = result.length;
+    // Trim the delimiter from around the output string.
+    while (result.charAt(start) === "\0")
+        start++;
+    while (result.charAt(end - 1) === "\0")
+        end--;
+    // Transform each token independently.
+    return result.slice(start, end).split("\0").map(transform).join(delimiter);
+}
+exports.noCase = noCase;
+/**
+ * Replace `re` in the input string with the replacement value.
+ */
+function replace(input, re, value) {
+    if (re instanceof RegExp)
+        return input.replace(re, value);
+    return re.reduce(function (input, re) { return input.replace(re, value); }, input);
+}
+//# sourceMappingURL=index.js.map
 
 /***/ }),
 
@@ -14047,1154 +22043,112 @@ exports.FetchError = FetchError;
 
 /***/ }),
 
-/***/ 4775:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ 9660:
+/***/ ((module) => {
 
 "use strict";
 
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.PaginatedSharedTagFragmentDoc = exports.PaginatedFormulationFragmentDoc = exports.PaginatedFormulationSpecificationFragmentDoc = exports.PaginatedFormulationAttemptFragmentDoc = exports.PaginatedAttemptFragmentDoc = exports.UnspecifiedAttemptForRowFragmentDoc = exports.ListedAuthorizationFragmentDoc = exports.FetchedSpecificationFormulationFragmentDoc = exports.FetchedSpecificationTagFormulationFragmentDoc = exports.FetchedSpecificationTagFragmentDoc = exports.FetchedOutlineFormulationFragmentDoc = exports.MyAccountFragmentDoc = exports.FetchedFormulationFragmentDoc = exports.FetchedAttemptFragmentDoc = exports.FetchedAttemptOutcomeFragmentDoc = exports.FullAttemptNotificationFragmentDoc = exports.FetchedAttemptSummariesFragmentDoc = exports.FullObjectiveSummaryFragmentDoc = exports.FullVariableSummaryFragmentDoc = exports.FullConstraintSummaryFragmentDoc = exports.FullParameterSummaryFragmentDoc = exports.FullValueProfileFragmentDoc = exports.FullDimensionSummaryFragmentDoc = exports.FetchedAttemptOutputsFragmentDoc = exports.FullConstraintFragmentDoc = exports.FullVariableFragmentDoc = exports.FullResultFragmentDoc = exports.FetchedAttemptInputsFragmentDoc = exports.FullParameterFragmentDoc = exports.FullDimensionFragmentDoc = exports.ExtractedSourceSliceFragmentDoc = exports.UpdatedFormulationFragmentDoc = exports.UnsharedFormulationFragmentDoc = exports.SharedSpecificationTagFragmentDoc = exports.StartedAttemptFragmentDoc = exports.FullAttemptOptionsFragmentDoc = exports.RegisteredSpecificationFragmentDoc = exports.SpecificationForOverviewFragmentDoc = exports.FullOutlineFragmentDoc = exports.FullConstraintOutlineFragmentDoc = exports.FullParameterOutlineFragmentDoc = exports.FullVariableOutlineFragmentDoc = exports.FullTensorOutlineFragmentDoc = exports.FullSourceBindingFragmentDoc = exports.FullDimensionOutlineFragmentDoc = exports.FullDefinitionFragmentDoc = exports.ShallowSpecificationTagFragmentDoc = exports.DeletedFormulationFragmentDoc = exports.CancelledAttemptFragmentDoc = exports.FullPageInfoFragmentDoc = void 0;
-exports.getSdk = exports.PollAttemptDocument = exports.PaginateSharedSpecificationTagsDocument = exports.PaginateFormulationsDocument = exports.PaginateFormulationSpecificationsDocument = exports.PaginateFormulationAttemptsDocument = exports.PaginateAttemptsDocument = exports.PaginateAttemptNotificationsDocument = exports.ListMyAuthorizationsDocument = exports.FetchSpecificationDocument = exports.FetchSpecificationTagDocument = exports.FetchOutlineDocument = exports.FetchMyAccountDocument = exports.FetchFormulationDocument = exports.FetchAttemptDocument = exports.FetchAttemptSummariesDocument = exports.FetchAttemptOutputsDocument = exports.FetchAttemptInputsDocument = exports.ExtractDefinitionsDocument = exports.ValidateDefinitionsDocument = exports.UpdateFormulationDocument = exports.StopSharingFormulationDocument = exports.StartSharingFormulationDocument = exports.StartAttemptDocument = exports.RevokeAuthorizationDocument = exports.RegisterSpecificationDocument = exports.GenerateAuthorizationDocument = exports.DeleteFormulationDocument = exports.CancelAttemptDocument = exports.PolledAttemptFragmentDoc = exports.PolledAttemptOutcomeFragmentDoc = void 0;
-exports.FullPageInfoFragmentDoc = `
-    fragment FullPageInfo on PageInfo {
-  startCursor
-  endCursor
-  hasPreviousPage
-  hasNextPage
+
+const refs = {
+  exit: [],
+  beforeExit: []
 }
-    `;
-exports.CancelledAttemptFragmentDoc = `
-    fragment CancelledAttempt on Attempt {
-  uuid
-  startedAt
-  dequeuedAt
-  endedAt
-  expiresAt
-  pristineSpecification {
-    revno
-    formulation {
-      name
-      displayName
+const functions = {
+  exit: onExit,
+  beforeExit: onBeforeExit
+}
+const registry = new FinalizationRegistry(clear)
+
+function install (event) {
+  if (refs[event].length > 0) {
+    return
+  }
+
+  process.on(event, functions[event])
+}
+
+function uninstall (event) {
+  if (refs[event].length > 0) {
+    return
+  }
+  process.removeListener(event, functions[event])
+}
+
+function onExit () {
+  callRefs('exit')
+}
+
+function onBeforeExit () {
+  callRefs('beforeExit')
+}
+
+function callRefs (event) {
+  for (const ref of refs[event]) {
+    const obj = ref.deref()
+    const fn = ref.fn
+
+    // This should always happen, however GC is
+    // undeterministic so it might not happen.
+    /* istanbul ignore else */
+    if (obj !== undefined) {
+      fn(obj, event)
     }
   }
 }
-    `;
-exports.DeletedFormulationFragmentDoc = `
-    fragment DeletedFormulation on DeleteFormulationOutput {
-  specificationCount
-  attemptCount
+
+function clear (ref) {
+  for (const event of ['exit', 'beforeExit']) {
+    const index = refs[event].indexOf(ref)
+    refs[event].splice(index, index + 1)
+    uninstall(event)
+  }
+}
+
+function _register (event, obj, fn) {
+  if (obj === undefined) {
+    throw new Error('the object can\'t be undefined')
+  }
+  install(event)
+  const ref = new WeakRef(obj)
+  ref.fn = fn
+
+  registry.register(obj, ref)
+  refs[event].push(ref)
+}
+
+function register (obj, fn) {
+  _register('exit', obj, fn)
+}
+
+function registerBeforeExit (obj, fn) {
+  _register('beforeExit', obj, fn)
+}
+
+function unregister (obj) {
+  registry.unregister(obj)
+  for (const event of ['exit', 'beforeExit']) {
+    refs[event] = refs[event].filter((ref) => {
+      const _obj = ref.deref()
+      return _obj && _obj !== obj
+    })
+    uninstall(event)
+  }
+}
+
+module.exports = {
+  register,
+  registerBeforeExit,
+  unregister
 }
-    `;
-exports.ShallowSpecificationTagFragmentDoc = `
-    fragment ShallowSpecificationTag on SpecificationTag {
-  name
-  createdAt
-  lastUpdatedAt
-  sharedVia
-}
-    `;
-exports.FullDefinitionFragmentDoc = `
-    fragment FullDefinition on Definition {
-  category
-  source
-  label
-  description
-}
-    `;
-exports.FullDimensionOutlineFragmentDoc = `
-    fragment FullDimensionOutline on DimensionOutline {
-  label
-  isNumeric
-}
-    `;
-exports.FullSourceBindingFragmentDoc = `
-    fragment FullSourceBinding on SourceBinding {
-  dimensionLabel
-  qualifier
-}
-    `;
-exports.FullTensorOutlineFragmentDoc = `
-    fragment FullTensorOutline on TensorOutline {
-  label
-  lowerBound
-  upperBound
-  isIntegral
-  bindings {
-    ...FullSourceBinding
-  }
-}
-    `;
-exports.FullVariableOutlineFragmentDoc = `
-    fragment FullVariableOutline on VariableOutline {
-  ...FullTensorOutline
-  derivation {
-    __typename
-    ... on DeficitVariable {
-      constraintLabel
-    }
-    ... on SurplusVariable {
-      constraintLabel
-    }
-  }
-}
-    `;
-exports.FullParameterOutlineFragmentDoc = `
-    fragment FullParameterOutline on ParameterOutline {
-  ...FullTensorOutline
-  derivation {
-    __typename
-    ... on PinParameter {
-      variableLabel
-    }
-  }
-}
-    `;
-exports.FullConstraintOutlineFragmentDoc = `
-    fragment FullConstraintOutline on ConstraintOutline {
-  label
-  bindings {
-    ...FullSourceBinding
-  }
-  derivation {
-    __typename
-    ... on PinConstraint {
-      variableLabel
-    }
-  }
-}
-    `;
-exports.FullOutlineFragmentDoc = `
-    fragment FullOutline on Outline {
-  objective {
-    isMaximization
-  }
-  dimensions {
-    ...FullDimensionOutline
-  }
-  variables {
-    ...FullVariableOutline
-  }
-  parameters {
-    ...FullParameterOutline
-  }
-  constraints {
-    ...FullConstraintOutline
-  }
-}
-    `;
-exports.SpecificationForOverviewFragmentDoc = `
-    fragment SpecificationForOverview on Specification {
-  revno
-  createdAt
-  expiresAt
-  description
-  tags {
-    ...ShallowSpecificationTag
-  }
-  definitions {
-    ...FullDefinition
-  }
-  outline {
-    ...FullOutline
-  }
-}
-    `;
-exports.RegisteredSpecificationFragmentDoc = `
-    fragment RegisteredSpecification on Specification {
-  formulation {
-    name
-    displayName
-    createdAt
-  }
-  ...SpecificationForOverview
-}
-    `;
-exports.FullAttemptOptionsFragmentDoc = `
-    fragment FullAttemptOptions on AttemptOptions {
-  relativeGapThreshold
-  absoluteGapThreshold
-  solveTimeoutMillis
-  primalValueEpsilon
-  pinnedVariableLabels
-  relaxation {
-    objectiveWeight
-    constraints {
-      label
-      penalty
-    }
-  }
-}
-    `;
-exports.StartedAttemptFragmentDoc = `
-    fragment StartedAttempt on Attempt {
-  uuid
-  startedAt
-  expiresAt
-  pristineSpecification {
-    revno
-    formulation {
-      displayName
-      name
-    }
-  }
-  outline {
-    ...FullOutline
-  }
-  options {
-    ...FullAttemptOptions
-  }
-}
-    `;
-exports.SharedSpecificationTagFragmentDoc = `
-    fragment SharedSpecificationTag on SpecificationTag {
-  ...ShallowSpecificationTag
-  specification {
-    revno
-  }
-}
-    `;
-exports.UnsharedFormulationFragmentDoc = `
-    fragment UnsharedFormulation on Formulation {
-  name
-  displayName
-  sharedTags: tags(first: 3, filter: {isShared: true}) {
-    edges {
-      node {
-        ...ShallowSpecificationTag
-        specification {
-          revno
-        }
-      }
-    }
-    totalCount
-  }
-}
-    `;
-exports.UpdatedFormulationFragmentDoc = `
-    fragment UpdatedFormulation on Formulation {
-  name
-  displayName
-  createdAt
-  defaultTagName
-}
-    `;
-exports.ExtractedSourceSliceFragmentDoc = `
-    fragment ExtractedSourceSlice on SourceSlice {
-  __typename
-  sourceIndex
-  startOffset
-  endOffset
-  ... on ValidSourceSlice {
-    definition {
-      ...FullDefinition
-    }
-  }
-  ... on InvalidSourceSlice {
-    errorMessage
-  }
-}
-    `;
-exports.FullDimensionFragmentDoc = `
-    fragment FullDimension on Dimension {
-  label
-  items
-}
-    `;
-exports.FullParameterFragmentDoc = `
-    fragment FullParameter on Parameter {
-  label
-  defaultValue
-  entries {
-    key
-    value
-  }
-}
-    `;
-exports.FetchedAttemptInputsFragmentDoc = `
-    fragment FetchedAttemptInputs on Attempt {
-  dimensions {
-    ...FullDimension
-  }
-  parameters {
-    ...FullParameter
-  }
-}
-    `;
-exports.FullResultFragmentDoc = `
-    fragment FullResult on Result {
-  label
-  entries {
-    key
-    value
-    dualValue
-  }
-}
-    `;
-exports.FullVariableFragmentDoc = `
-    fragment FullVariable on Variable {
-  ...FullResult
-}
-    `;
-exports.FullConstraintFragmentDoc = `
-    fragment FullConstraint on Constraint {
-  ...FullResult
-}
-    `;
-exports.FetchedAttemptOutputsFragmentDoc = `
-    fragment FetchedAttemptOutputs on FeasibleOutcome {
-  variables {
-    ...FullVariable
-  }
-  constraints {
-    ...FullConstraint
-  }
-}
-    `;
-exports.FullDimensionSummaryFragmentDoc = `
-    fragment FullDimensionSummary on DimensionSummary {
-  label
-  itemCount
-}
-    `;
-exports.FullValueProfileFragmentDoc = `
-    fragment FullValueProfile on ValueProfile {
-  count
-  min
-  max
-  mean
-  stddev
-  buckets {
-    left
-    right
-    count
-  }
-}
-    `;
-exports.FullParameterSummaryFragmentDoc = `
-    fragment FullParameterSummary on ParameterSummary {
-  label
-  domainMultiplicity
-  entryProfile {
-    ...FullValueProfile
-  }
-  entryDensity
-}
-    `;
-exports.FullConstraintSummaryFragmentDoc = `
-    fragment FullConstraintSummary on ConstraintSummary {
-  label
-  reifiedIn
-  domainMultiplicity
-  coefficientMultiplicity
-  rowCount
-  rowDensity
-  columnCount
-  columnDensity
-  weightProfile {
-    ...FullValueProfile
-  }
-  weightDensity
-}
-    `;
-exports.FullVariableSummaryFragmentDoc = `
-    fragment FullVariableSummary on VariableSummary {
-  label
-  domainMultiplicity
-  columnCount
-  columnDensity
-  resultProfile {
-    ...FullValueProfile
-  }
-  resultDensity
-}
-    `;
-exports.FullObjectiveSummaryFragmentDoc = `
-    fragment FullObjectiveSummary on ObjectiveSummary {
-  reifiedIn
-  coefficientMultiplicity
-  weightProfile {
-    ...FullValueProfile
-  }
-  weightDensity
-}
-    `;
-exports.FetchedAttemptSummariesFragmentDoc = `
-    fragment FetchedAttemptSummaries on Attempt {
-  dimensionSummaries {
-    ...FullDimensionSummary
-  }
-  parameterSummaries {
-    ...FullParameterSummary
-  }
-  constraintSummaries {
-    ...FullConstraintSummary
-  }
-  variableSummaries {
-    ...FullVariableSummary
-  }
-  objectiveSummary {
-    ...FullObjectiveSummary
-  }
-}
-    `;
-exports.FullAttemptNotificationFragmentDoc = `
-    fragment FullAttemptNotification on AttemptNotification {
-  effectiveAt
-  relativeGap
-  lpIterationCount
-  cutCount
-}
-    `;
-exports.FetchedAttemptOutcomeFragmentDoc = `
-    fragment FetchedAttemptOutcome on Outcome {
-  __typename
-  ... on FailedOutcome {
-    failure
-  }
-  ... on FeasibleOutcome {
-    isOptimal
-    objectiveValue
-    relativeGap
-  }
-}
-    `;
-exports.FetchedAttemptFragmentDoc = `
-    fragment FetchedAttempt on Attempt {
-  id
-  uuid
-  pristineSpecification {
-    revno
-    formulation {
-      name
-      displayName
-    }
-    tags {
-      ...ShallowSpecificationTag
-    }
-  }
-  specificationTagName
-  outline {
-    ...FullOutline
-  }
-  startedAt
-  dequeuedAt
-  endedAt
-  expiresAt
-  status
-  notifications(last: 100) {
-    edges {
-      node {
-        ...FullAttemptNotification
-      }
-    }
-  }
-  options {
-    ...FullAttemptOptions
-  }
-  inputBytes
-  outputBytes
-  outcome {
-    ...FetchedAttemptOutcome
-  }
-}
-    `;
-exports.FetchedFormulationFragmentDoc = `
-    fragment FetchedFormulation on Formulation {
-  id
-  name
-  displayName
-  createdAt
-  lastSpecifiedAt
-  defaultTagName
-  specifications(last: 0) {
-    totalCount
-  }
-  sharedTags: tags(first: 0, filter: {isShared: true}) {
-    totalCount
-  }
-}
-    `;
-exports.MyAccountFragmentDoc = `
-    fragment MyAccount on Account {
-  holder {
-    ... on Member {
-      email
-    }
-  }
-}
-    `;
-exports.FetchedOutlineFormulationFragmentDoc = `
-    fragment FetchedOutlineFormulation on Formulation {
-  name
-  displayName
-  tag(name: $tagName) {
-    name
-    specification {
-      revno
-      outline {
-        ...FullOutline
-      }
-    }
-  }
-}
-    `;
-exports.FetchedSpecificationTagFragmentDoc = `
-    fragment FetchedSpecificationTag on SpecificationTag {
-  ...ShallowSpecificationTag
-  specification {
-    ...SpecificationForOverview
-  }
-}
-    `;
-exports.FetchedSpecificationTagFormulationFragmentDoc = `
-    fragment FetchedSpecificationTagFormulation on Formulation {
-  name
-  displayName
-  tag(name: $name) {
-    ...FetchedSpecificationTag
-  }
-}
-    `;
-exports.FetchedSpecificationFormulationFragmentDoc = `
-    fragment FetchedSpecificationFormulation on Formulation {
-  name
-  displayName
-  specification(revno: $revno) {
-    ...SpecificationForOverview
-  }
-}
-    `;
-exports.ListedAuthorizationFragmentDoc = `
-    fragment ListedAuthorization on Authorization {
-  id
-  name
-  createdAt
-  lastUsedAt
-  expiresAt
-  tokenSuffix
-}
-    `;
-exports.UnspecifiedAttemptForRowFragmentDoc = `
-    fragment UnspecifiedAttemptForRow on Attempt {
-  id
-  uuid
-  specificationTagName
-  startedAt
-  dequeuedAt
-  endedAt
-  expiresAt
-  outline {
-    ...FullOutline
-  }
-  options {
-    ...FullAttemptOptions
-  }
-  status
-  inputBytes
-  outputBytes
-  outcome {
-    __typename
-    ... on FailedOutcome {
-      failure
-    }
-    ... on FeasibleOutcome {
-      isOptimal
-      objectiveValue
-      relativeGap
-    }
-  }
-}
-    `;
-exports.PaginatedAttemptFragmentDoc = `
-    fragment PaginatedAttempt on Attempt {
-  ...UnspecifiedAttemptForRow
-  pristineSpecification {
-    revno
-    formulation {
-      name
-      displayName
-    }
-  }
-}
-    `;
-exports.PaginatedFormulationAttemptFragmentDoc = `
-    fragment PaginatedFormulationAttempt on Attempt {
-  ...UnspecifiedAttemptForRow
-  pristineSpecification {
-    id
-    revno
-  }
-}
-    `;
-exports.PaginatedFormulationSpecificationFragmentDoc = `
-    fragment PaginatedFormulationSpecification on Specification {
-  id
-  revno
-  createdAt
-  expiresAt
-  tags {
-    ...ShallowSpecificationTag
-  }
-}
-    `;
-exports.PaginatedFormulationFragmentDoc = `
-    fragment PaginatedFormulation on Formulation {
-  id
-  name
-  displayName
-  createdAt
-  lastSpecifiedAt
-  specifications(last: 0) {
-    totalCount
-  }
-}
-    `;
-exports.PaginatedSharedTagFragmentDoc = `
-    fragment PaginatedSharedTag on SpecificationTag {
-  id
-  ...ShallowSpecificationTag
-  specification {
-    id
-    revno
-    formulation {
-      id
-      name
-      displayName
-    }
-  }
-}
-    `;
-exports.PolledAttemptOutcomeFragmentDoc = `
-    fragment PolledAttemptOutcome on Outcome {
-  __typename
-  ... on FailedOutcome {
-    failure
-  }
-  ... on FeasibleOutcome {
-    isOptimal
-    objectiveValue
-    relativeGap
-  }
-}
-    `;
-exports.PolledAttemptFragmentDoc = `
-    fragment PolledAttempt on Attempt {
-  uuid
-  status
-  startedAt
-  dequeuedAt
-  endedAt
-  notifications(last: 1) {
-    edges {
-      node {
-        ...FullAttemptNotification
-      }
-    }
-  }
-  outcome {
-    ...PolledAttemptOutcome
-  }
-}
-    `;
-exports.CancelAttemptDocument = `
-    mutation CancelAttempt($uuid: Uuid!) {
-  cancelAttempt(uuid: $uuid) {
-    ...CancelledAttempt
-  }
-}
-    ${exports.CancelledAttemptFragmentDoc}`;
-exports.DeleteFormulationDocument = `
-    mutation DeleteFormulation($name: Name!) {
-  deleteFormulation(name: $name) {
-    ...DeletedFormulation
-  }
-}
-    ${exports.DeletedFormulationFragmentDoc}`;
-exports.GenerateAuthorizationDocument = `
-    mutation GenerateAuthorization($input: GenerateAuthorizationInput!) {
-  generateAuthorization(input: $input) {
-    token
-  }
-}
-    `;
-exports.RegisterSpecificationDocument = `
-    mutation RegisterSpecification($input: RegisterSpecificationInput!) {
-  registerSpecification(input: $input) {
-    ...RegisteredSpecification
-  }
-}
-    ${exports.RegisteredSpecificationFragmentDoc}
-${exports.SpecificationForOverviewFragmentDoc}
-${exports.ShallowSpecificationTagFragmentDoc}
-${exports.FullDefinitionFragmentDoc}
-${exports.FullOutlineFragmentDoc}
-${exports.FullDimensionOutlineFragmentDoc}
-${exports.FullVariableOutlineFragmentDoc}
-${exports.FullTensorOutlineFragmentDoc}
-${exports.FullSourceBindingFragmentDoc}
-${exports.FullParameterOutlineFragmentDoc}
-${exports.FullConstraintOutlineFragmentDoc}`;
-exports.RevokeAuthorizationDocument = `
-    mutation RevokeAuthorization($name: Name!) {
-  revokeAuthorization(input: {name: $name})
-}
-    `;
-exports.StartAttemptDocument = `
-    mutation StartAttempt($input: AttemptInput!) {
-  startAttempt(input: $input) {
-    ...StartedAttempt
-  }
-}
-    ${exports.StartedAttemptFragmentDoc}
-${exports.FullOutlineFragmentDoc}
-${exports.FullDimensionOutlineFragmentDoc}
-${exports.FullVariableOutlineFragmentDoc}
-${exports.FullTensorOutlineFragmentDoc}
-${exports.FullSourceBindingFragmentDoc}
-${exports.FullParameterOutlineFragmentDoc}
-${exports.FullConstraintOutlineFragmentDoc}
-${exports.FullAttemptOptionsFragmentDoc}`;
-exports.StartSharingFormulationDocument = `
-    mutation StartSharingFormulation($input: StartSharingFormulationInput!) {
-  startSharingFormulation(input: $input) {
-    ...SharedSpecificationTag
-  }
-}
-    ${exports.SharedSpecificationTagFragmentDoc}
-${exports.ShallowSpecificationTagFragmentDoc}`;
-exports.StopSharingFormulationDocument = `
-    mutation StopSharingFormulation($input: StopSharingFormulationInput!) {
-  stopSharingFormulation(input: $input) {
-    ...UnsharedFormulation
-  }
-}
-    ${exports.UnsharedFormulationFragmentDoc}
-${exports.ShallowSpecificationTagFragmentDoc}`;
-exports.UpdateFormulationDocument = `
-    mutation UpdateFormulation($input: UpdateFormulationInput!) {
-  updateFormulation(input: $input) {
-    ...UpdatedFormulation
-  }
-}
-    ${exports.UpdatedFormulationFragmentDoc}`;
-exports.ValidateDefinitionsDocument = `
-    query ValidateDefinitions($definitions: [DefinitionInput!]!) {
-  validateDefinitions(definitions: $definitions) {
-    warnings
-  }
-}
-    `;
-exports.ExtractDefinitionsDocument = `
-    query ExtractDefinitions($sources: [Source!]!) {
-  extractDefinitions(sources: $sources) {
-    slices {
-      ...ExtractedSourceSlice
-    }
-  }
-}
-    ${exports.ExtractedSourceSliceFragmentDoc}
-${exports.FullDefinitionFragmentDoc}`;
-exports.FetchAttemptInputsDocument = `
-    query FetchAttemptInputs($uuid: Uuid!) {
-  attempt(uuid: $uuid) {
-    ...FetchedAttemptInputs
-  }
-}
-    ${exports.FetchedAttemptInputsFragmentDoc}
-${exports.FullDimensionFragmentDoc}
-${exports.FullParameterFragmentDoc}`;
-exports.FetchAttemptOutputsDocument = `
-    query FetchAttemptOutputs($uuid: Uuid!) {
-  attempt(uuid: $uuid) {
-    outcome {
-      __typename
-      ... on FeasibleOutcome {
-        ...FetchedAttemptOutputs
-      }
-    }
-  }
-}
-    ${exports.FetchedAttemptOutputsFragmentDoc}
-${exports.FullVariableFragmentDoc}
-${exports.FullResultFragmentDoc}
-${exports.FullConstraintFragmentDoc}`;
-exports.FetchAttemptSummariesDocument = `
-    query FetchAttemptSummaries($uuid: Uuid!) {
-  attempt(uuid: $uuid) {
-    ...FetchedAttemptSummaries
-  }
-}
-    ${exports.FetchedAttemptSummariesFragmentDoc}
-${exports.FullDimensionSummaryFragmentDoc}
-${exports.FullParameterSummaryFragmentDoc}
-${exports.FullValueProfileFragmentDoc}
-${exports.FullConstraintSummaryFragmentDoc}
-${exports.FullVariableSummaryFragmentDoc}
-${exports.FullObjectiveSummaryFragmentDoc}`;
-exports.FetchAttemptDocument = `
-    query FetchAttempt($uuid: Uuid!) {
-  attempt(uuid: $uuid) {
-    ...FetchedAttempt
-  }
-}
-    ${exports.FetchedAttemptFragmentDoc}
-${exports.ShallowSpecificationTagFragmentDoc}
-${exports.FullOutlineFragmentDoc}
-${exports.FullDimensionOutlineFragmentDoc}
-${exports.FullVariableOutlineFragmentDoc}
-${exports.FullTensorOutlineFragmentDoc}
-${exports.FullSourceBindingFragmentDoc}
-${exports.FullParameterOutlineFragmentDoc}
-${exports.FullConstraintOutlineFragmentDoc}
-${exports.FullAttemptNotificationFragmentDoc}
-${exports.FullAttemptOptionsFragmentDoc}
-${exports.FetchedAttemptOutcomeFragmentDoc}`;
-exports.FetchFormulationDocument = `
-    query FetchFormulation($name: Name!) {
-  formulation(name: $name) {
-    ...FetchedFormulation
-  }
-  attempts(last: 1, filter: {formulationName: $name}) {
-    edges {
-      node {
-        startedAt
-      }
-    }
-    totalCount
-  }
-}
-    ${exports.FetchedFormulationFragmentDoc}`;
-exports.FetchMyAccountDocument = `
-    query FetchMyAccount {
-  me {
-    __typename
-    id
-    ...MyAccount
-  }
-}
-    ${exports.MyAccountFragmentDoc}`;
-exports.FetchOutlineDocument = `
-    query FetchOutline($formulationName: Name!, $tagName: Name) {
-  formulation(name: $formulationName) {
-    ...FetchedOutlineFormulation
-  }
-}
-    ${exports.FetchedOutlineFormulationFragmentDoc}
-${exports.FullOutlineFragmentDoc}
-${exports.FullDimensionOutlineFragmentDoc}
-${exports.FullVariableOutlineFragmentDoc}
-${exports.FullTensorOutlineFragmentDoc}
-${exports.FullSourceBindingFragmentDoc}
-${exports.FullParameterOutlineFragmentDoc}
-${exports.FullConstraintOutlineFragmentDoc}`;
-exports.FetchSpecificationTagDocument = `
-    query FetchSpecificationTag($formulationName: Name!, $name: Name) {
-  formulation(name: $formulationName) {
-    ...FetchedSpecificationTagFormulation
-  }
-}
-    ${exports.FetchedSpecificationTagFormulationFragmentDoc}
-${exports.FetchedSpecificationTagFragmentDoc}
-${exports.ShallowSpecificationTagFragmentDoc}
-${exports.SpecificationForOverviewFragmentDoc}
-${exports.FullDefinitionFragmentDoc}
-${exports.FullOutlineFragmentDoc}
-${exports.FullDimensionOutlineFragmentDoc}
-${exports.FullVariableOutlineFragmentDoc}
-${exports.FullTensorOutlineFragmentDoc}
-${exports.FullSourceBindingFragmentDoc}
-${exports.FullParameterOutlineFragmentDoc}
-${exports.FullConstraintOutlineFragmentDoc}`;
-exports.FetchSpecificationDocument = `
-    query FetchSpecification($formulationName: Name!, $revno: Int!) {
-  formulation(name: $formulationName) {
-    ...FetchedSpecificationFormulation
-  }
-}
-    ${exports.FetchedSpecificationFormulationFragmentDoc}
-${exports.SpecificationForOverviewFragmentDoc}
-${exports.ShallowSpecificationTagFragmentDoc}
-${exports.FullDefinitionFragmentDoc}
-${exports.FullOutlineFragmentDoc}
-${exports.FullDimensionOutlineFragmentDoc}
-${exports.FullVariableOutlineFragmentDoc}
-${exports.FullTensorOutlineFragmentDoc}
-${exports.FullSourceBindingFragmentDoc}
-${exports.FullParameterOutlineFragmentDoc}
-${exports.FullConstraintOutlineFragmentDoc}`;
-exports.ListMyAuthorizationsDocument = `
-    query ListMyAuthorizations {
-  me {
-    holder {
-      ... on Member {
-        authorizations {
-          ...ListedAuthorization
-        }
-      }
-    }
-  }
-}
-    ${exports.ListedAuthorizationFragmentDoc}`;
-exports.PaginateAttemptNotificationsDocument = `
-    query PaginateAttemptNotifications($uuid: Uuid!, $last: AttemptNotificationLimit!, $before: Cursor) {
-  attempt(uuid: $uuid) {
-    notifications(last: $last, before: $before) {
-      edges {
-        node {
-          ...FullAttemptNotification
-        }
-      }
-      pageInfo {
-        ...FullPageInfo
-      }
-      totalCount
-    }
-  }
-}
-    ${exports.FullAttemptNotificationFragmentDoc}
-${exports.FullPageInfoFragmentDoc}`;
-exports.PaginateAttemptsDocument = `
-    query PaginateAttempts($first: AttemptLimit, $after: Cursor, $last: AttemptLimit, $before: Cursor, $filter: AttemptFilter) {
-  attempts(
-    first: $first
-    after: $after
-    last: $last
-    before: $before
-    filter: $filter
-  ) {
-    edges {
-      node {
-        ...PaginatedAttempt
-      }
-    }
-    pageInfo {
-      ...FullPageInfo
-    }
-    totalCount
-  }
-}
-    ${exports.PaginatedAttemptFragmentDoc}
-${exports.UnspecifiedAttemptForRowFragmentDoc}
-${exports.FullOutlineFragmentDoc}
-${exports.FullDimensionOutlineFragmentDoc}
-${exports.FullVariableOutlineFragmentDoc}
-${exports.FullTensorOutlineFragmentDoc}
-${exports.FullSourceBindingFragmentDoc}
-${exports.FullParameterOutlineFragmentDoc}
-${exports.FullConstraintOutlineFragmentDoc}
-${exports.FullAttemptOptionsFragmentDoc}
-${exports.FullPageInfoFragmentDoc}`;
-exports.PaginateFormulationAttemptsDocument = `
-    query PaginateFormulationAttempts($formulationName: Name!, $last: AttemptLimit!, $before: Cursor) {
-  attempts(
-    last: $last
-    before: $before
-    filter: {formulationName: $formulationName}
-  ) {
-    edges {
-      node {
-        ...PaginatedFormulationAttempt
-      }
-    }
-    pageInfo {
-      startCursor
-      hasPreviousPage
-    }
-    totalCount
-  }
-}
-    ${exports.PaginatedFormulationAttemptFragmentDoc}
-${exports.UnspecifiedAttemptForRowFragmentDoc}
-${exports.FullOutlineFragmentDoc}
-${exports.FullDimensionOutlineFragmentDoc}
-${exports.FullVariableOutlineFragmentDoc}
-${exports.FullTensorOutlineFragmentDoc}
-${exports.FullSourceBindingFragmentDoc}
-${exports.FullParameterOutlineFragmentDoc}
-${exports.FullConstraintOutlineFragmentDoc}
-${exports.FullAttemptOptionsFragmentDoc}`;
-exports.PaginateFormulationSpecificationsDocument = `
-    query PaginateFormulationSpecifications($formulationName: Name!, $first: Limit, $after: Cursor, $last: Limit, $before: Cursor) {
-  formulation(name: $formulationName) {
-    specifications(first: $first, after: $after, last: $last, before: $before) {
-      edges {
-        node {
-          ...PaginatedFormulationSpecification
-        }
-      }
-      pageInfo {
-        ...FullPageInfo
-      }
-      totalCount
-    }
-  }
-}
-    ${exports.PaginatedFormulationSpecificationFragmentDoc}
-${exports.ShallowSpecificationTagFragmentDoc}
-${exports.FullPageInfoFragmentDoc}`;
-exports.PaginateFormulationsDocument = `
-    query PaginateFormulations($first: Limit, $after: Cursor, $last: Limit, $before: Cursor, $filter: FormulationFilter, $orderBy: FormulationOrderBy) {
-  formulations(
-    first: $first
-    after: $after
-    last: $last
-    before: $before
-    filter: $filter
-    orderBy: $orderBy
-  ) {
-    edges {
-      node {
-        ...PaginatedFormulation
-      }
-    }
-    pageInfo {
-      ...FullPageInfo
-    }
-    totalCount
-  }
-}
-    ${exports.PaginatedFormulationFragmentDoc}
-${exports.FullPageInfoFragmentDoc}`;
-exports.PaginateSharedSpecificationTagsDocument = `
-    query PaginateSharedSpecificationTags($last: Limit!, $before: Cursor) {
-  sharedSpecificationTags(last: $last, before: $before) {
-    edges {
-      node {
-        ...PaginatedSharedTag
-      }
-    }
-    pageInfo {
-      startCursor
-      hasPreviousPage
-    }
-    totalCount
-  }
-}
-    ${exports.PaginatedSharedTagFragmentDoc}
-${exports.ShallowSpecificationTagFragmentDoc}`;
-exports.PollAttemptDocument = `
-    query PollAttempt($uuid: Uuid!) {
-  attempt(uuid: $uuid) {
-    ...PolledAttempt
-  }
-}
-    ${exports.PolledAttemptFragmentDoc}
-${exports.FullAttemptNotificationFragmentDoc}
-${exports.PolledAttemptOutcomeFragmentDoc}`;
-function getSdk(requester) {
-    return {
-        CancelAttempt(variables, options) {
-            return requester("@CancelAttempt", variables, options);
-        },
-        DeleteFormulation(variables, options) {
-            return requester("@DeleteFormulation", variables, options);
-        },
-        GenerateAuthorization(variables, options) {
-            return requester("@GenerateAuthorization", variables, options);
-        },
-        RegisterSpecification(variables, options) {
-            return requester("@RegisterSpecification", variables, options);
-        },
-        RevokeAuthorization(variables, options) {
-            return requester("@RevokeAuthorization", variables, options);
-        },
-        StartAttempt(variables, options) {
-            return requester("@StartAttempt", variables, options);
-        },
-        StartSharingFormulation(variables, options) {
-            return requester("@StartSharingFormulation", variables, options);
-        },
-        StopSharingFormulation(variables, options) {
-            return requester("@StopSharingFormulation", variables, options);
-        },
-        UpdateFormulation(variables, options) {
-            return requester("@UpdateFormulation", variables, options);
-        },
-        ValidateDefinitions(variables, options) {
-            return requester("@ValidateDefinitions", variables, options);
-        },
-        ExtractDefinitions(variables, options) {
-            return requester("@ExtractDefinitions", variables, options);
-        },
-        FetchAttemptInputs(variables, options) {
-            return requester("@FetchAttemptInputs", variables, options);
-        },
-        FetchAttemptOutputs(variables, options) {
-            return requester("@FetchAttemptOutputs", variables, options);
-        },
-        FetchAttemptSummaries(variables, options) {
-            return requester("@FetchAttemptSummaries", variables, options);
-        },
-        FetchAttempt(variables, options) {
-            return requester("@FetchAttempt", variables, options);
-        },
-        FetchFormulation(variables, options) {
-            return requester("@FetchFormulation", variables, options);
-        },
-        FetchMyAccount(variables, options) {
-            return requester("@FetchMyAccount", variables, options);
-        },
-        FetchOutline(variables, options) {
-            return requester("@FetchOutline", variables, options);
-        },
-        FetchSpecificationTag(variables, options) {
-            return requester("@FetchSpecificationTag", variables, options);
-        },
-        FetchSpecification(variables, options) {
-            return requester("@FetchSpecification", variables, options);
-        },
-        ListMyAuthorizations(variables, options) {
-            return requester("@ListMyAuthorizations", variables, options);
-        },
-        PaginateAttemptNotifications(variables, options) {
-            return requester("@PaginateAttemptNotifications", variables, options);
-        },
-        PaginateAttempts(variables, options) {
-            return requester("@PaginateAttempts", variables, options);
-        },
-        PaginateFormulationAttempts(variables, options) {
-            return requester("@PaginateFormulationAttempts", variables, options);
-        },
-        PaginateFormulationSpecifications(variables, options) {
-            return requester("@PaginateFormulationSpecifications", variables, options);
-        },
-        PaginateFormulations(variables, options) {
-            return requester("@PaginateFormulations", variables, options);
-        },
-        PaginateSharedSpecificationTags(variables, options) {
-            return requester("@PaginateSharedSpecificationTags", variables, options);
-        },
-        PollAttempt(variables, options) {
-            return requester("@PollAttempt", variables, options);
-        }
-    };
-}
-exports.getSdk = getSdk;
 
 
 /***/ }),
 
-/***/ 9034:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+/***/ 2380:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __exportStar = (this && this.__exportStar) || function(m, exports) {
-    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
-};
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getSyncSdk = void 0;
 /**
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with this
@@ -15211,13 +22165,61 @@ exports.getSyncSdk = void 0;
  * License for the specific language governing permissions and limitations under
  * the License.
  */
-const graph_gen_1 = __nccwpck_require__(4775);
-__exportStar(__nccwpck_require__(4775), exports);
-/** Generates a synchronous SDK, useful for example in Google Apps Scripts. */
-function getSyncSdk(requester) {
-    return (0, graph_gen_1.getSdk)(requester);
+var _a;
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.resultData = exports.invalidSourceSnippet = exports.clientErrorCodes = exports.clientErrors = void 0;
+const code_frame_1 = __nccwpck_require__(1322);
+const stl_errors_1 = __nccwpck_require__(1553);
+_a = (0, stl_errors_1.errorFactories)({
+    definitions: {
+        apiRequestFailed: (cause) => ({
+            message: 'API request failed: ' +
+                (cause.response.errors?.map(formatError).join(', ') ?? cause.message),
+            cause,
+            tags: { errors: cause.response.errors },
+        }),
+        apiResponseErrored: (errs) => ({
+            message: 'API response included errors: ' + errs.map(formatError).join(', '),
+            tags: { errors: errs },
+        }),
+        unparseableSource: (snippets) => ({
+            message: `Encountered ${snippets.length} error(s) while parsing source:\n\n` +
+                snippets.map((s) => s.preview).join('\n'),
+            tags: { snippets },
+        }),
+        missingAuthorization: 'No authorization found',
+        unknownAttempt: (uuid) => ({
+            message: `Attempt ${uuid} was not found`,
+            tags: { uuid },
+        }),
+        unknownFormulation: (formulation, tag) => ({
+            message: `Formulation ${formulation} ${tag ? ` (${tag})` : ''}` +
+                'was not found',
+            tags: { formulation, tag },
+        }),
+    },
+}), exports.clientErrors = _a[0], exports.clientErrorCodes = _a[1];
+function invalidSourceSnippet(slice, src) {
+    const { start, end } = slice.range;
+    const preview = (0, code_frame_1.codeFrameColumns)(src, { start, end: { line: end.line, column: end.column + 2 } }, { linesAbove: 1, linesBelow: 1, message: slice.errorMessage });
+    return { slice, preview };
 }
-exports.getSyncSdk = getSyncSdk;
+exports.invalidSourceSnippet = invalidSourceSnippet;
+function resultData(res) {
+    if (res.errors?.length) {
+        throw exports.clientErrors.apiResponseErrored(res.errors);
+    }
+    return stl_errors_1.check.isPresent(res.data);
+}
+exports.resultData = resultData;
+function formatError(err) {
+    let msg = err.message;
+    if (err.extensions) {
+        const details = Object.entries(err.extensions).map((e) => `${e[0]}: ${typeof e[1] === 'string' ? e[1] : JSON.stringify(e[1])}`);
+        msg += ` (${details.join(', ')})`;
+    }
+    return msg;
+}
 
 
 /***/ }),
@@ -15270,85 +22272,133 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.OpviousClient = void 0;
+exports.OpviousClient = exports.clientErrorCodes = void 0;
+const otel = __importStar(__nccwpck_require__(5163));
+const api = __importStar(__nccwpck_require__(8658));
+const stl_errors_1 = __nccwpck_require__(1553);
+const stl_telemetry_1 = __nccwpck_require__(4782);
 const backoff_1 = __importDefault(__nccwpck_require__(3086));
 const events_1 = __importDefault(__nccwpck_require__(2361));
 const graphql_request_1 = __nccwpck_require__(2476);
 const node_fetch_1 = __importStar(__nccwpck_require__(467));
-const g = __importStar(__nccwpck_require__(9034));
 const tiny_typed_emitter_1 = __nccwpck_require__(3834);
 const zlib_1 = __importDefault(__nccwpck_require__(9796));
 const common_1 = __nccwpck_require__(2026);
+const common_2 = __nccwpck_require__(2380);
+var common_3 = __nccwpck_require__(2380);
+Object.defineProperty(exports, "clientErrorCodes", ({ enumerable: true, get: function () { return common_3.clientErrorCodes; } }));
 /** Opvious API client. */
 class OpviousClient {
-    constructor(
+    constructor(telemetry, 
     /** Base endpoint to the GraphQL API. */
     apiEndpoint, 
     /** Base optimization hub endpoint. */
     hubEndpoint, sdk) {
+        this.telemetry = telemetry;
         this.apiEndpoint = apiEndpoint;
         this.hubEndpoint = hubEndpoint;
         this.sdk = sdk;
     }
     /** Creates a new client. */
     static create(opts) {
+        const tel = (opts?.telemetry ?? (0, stl_telemetry_1.noopTelemetry)()).via(common_1.packageInfo);
+        const { logger } = tel;
         const auth = opts?.authorization ?? process.env.OPVIOUS_TOKEN;
         if (!auth) {
-            throw new Error('Missing authorization');
+            throw common_2.clientErrors.missingAuthorization();
         }
+        const domain = opts?.domain;
         const apiEndpoint = (0, common_1.strippingTrailingSlashes)(opts?.apiEndpoint
             ? '' + opts.apiEndpoint
-            : process.env.OPVIOUS_API_ENDPOINT ?? DefaultEndpoint.API);
-        const threshold = ENCODING_THRESHOLD;
+            : process.env.OPVIOUS_API_ENDPOINT ?? defaultEndpoint('api', domain));
         const client = new graphql_request_1.GraphQLClient(apiEndpoint + '/graphql', {
+            errorPolicy: 'all',
             headers: {
+                'accept-encoding': 'br;q=1.0, gzip;q=0.5, *;q=0.1',
                 authorization: auth.includes(' ') ? auth : 'Bearer ' + auth,
-                'opvious-client': 'TypeScript SDK',
+                'opvious-sdk': 'TypeScript v' + common_1.packageInfo.version,
             },
-            fetch(info, init) {
+            async fetch(info, init) {
                 const { body } = init;
-                if (typeof body != 'string' || body.length <= threshold) {
-                    return (0, node_fetch_1.default)(info, init);
-                }
                 const headers = new node_fetch_1.Headers(init.headers);
-                (0, common_1.assert)(!headers.get(ENCODING_HEADER));
-                headers.set(ENCODING_HEADER, 'gzip');
-                const gzip = zlib_1.default.createGzip();
-                process.nextTick(() => {
-                    gzip.end(body);
+                otel.propagation.inject(otel.context.active(), headers, {
+                    set(carrier, key, value) {
+                        carrier.set(key, value);
+                    },
                 });
-                return (0, node_fetch_1.default)(info, { ...init, headers, body: gzip });
+                (0, stl_errors_1.assert)(typeof body == 'string', 'Non-string body');
+                let res;
+                if (body.length <= COMPRESSION_THRESHOLD) {
+                    logger.debug({ data: { req: { body, headers: Object.fromEntries(headers) } } }, 'Sending uncompressed API request...');
+                    res = await (0, node_fetch_1.default)(info, { ...init, headers });
+                }
+                else {
+                    const headers = new node_fetch_1.Headers(init.headers);
+                    headers.set(ENCODING_HEADER, 'br');
+                    const compressed = zlib_1.default.createBrotliCompress({
+                        params: {
+                            [zlib_1.default.constants.BROTLI_PARAM_MODE]: zlib_1.default.constants.BROTLI_MODE_TEXT,
+                            [zlib_1.default.constants.BROTLI_PARAM_QUALITY]: BROTLI_QUALITY,
+                        },
+                    });
+                    process.nextTick(() => {
+                        compressed.end(body);
+                    });
+                    logger.debug({
+                        data: {
+                            req: {
+                                bodyLength: body.length,
+                                headers: Object.fromEntries(headers),
+                            },
+                        },
+                    }, 'Sending compressed API request...');
+                    res = await (0, node_fetch_1.default)(info, { ...init, headers, body: compressed });
+                }
+                logger.debug({
+                    data: {
+                        res: {
+                            headers: Object.fromEntries(res.headers),
+                            statusCode: res.status,
+                        },
+                    },
+                }, 'Got API response.');
+                return res;
             },
         });
-        const sdk = g.getSdk((query, vars) => client.rawRequest(query, vars));
+        const sdk = api.getSdk(async (query, vars) => {
+            try {
+                return await client.rawRequest(query, vars);
+            }
+            catch (err) {
+                (0, stl_errors_1.assertCause)(err instanceof graphql_request_1.ClientError, err);
+                throw common_2.clientErrors.apiRequestFailed(err);
+            }
+        });
         const hubEndpoint = (0, common_1.strippingTrailingSlashes)(opts?.hubEndpoint
             ? '' + opts.hubEndpoint
-            : process.env.OPVIOUS_HUB_ENDPOINT ?? DefaultEndpoint.HUB);
-        return new OpviousClient(apiEndpoint, hubEndpoint, sdk);
+            : process.env.OPVIOUS_HUB_ENDPOINT ?? defaultEndpoint('hub', domain));
+        logger.debug('Created new client.');
+        return new OpviousClient(tel, apiEndpoint, hubEndpoint, sdk);
     }
     /** Fetch currently active account information. */
     async fetchMyAccount() {
         const res = await this.sdk.FetchMyAccount();
-        (0, common_1.assertNoErrors)(res);
-        return (0, common_1.checkPresent)(res.data?.me);
+        return (0, common_2.resultData)(res).me;
     }
     /** Lists all available authorizations. */
     async listAuthorizations() {
         const res = await this.sdk.ListMyAuthorizations();
-        (0, common_1.assertNoErrors)(res);
-        return (0, common_1.checkPresent)(res.data?.me.holder).authorizations;
+        return (0, common_2.resultData)(res).me.holder.authorizations;
     }
     /** Creates a new access token for an authorization with the given name. */
     async generateAccessToken(input) {
         const res = await this.sdk.GenerateAuthorization({ input });
-        (0, common_1.assertNoErrors)(res);
-        return (0, common_1.checkPresent)(res.data).generateAuthorization.token;
+        return (0, common_2.resultData)(res).generateAuthorization.token;
     }
     /** Revokes an authorization from its name, returning true if one existed. */
     async revokeAuthorization(name) {
         const res = await this.sdk.RevokeAuthorization({ name });
-        (0, common_1.assertNoErrors)(res);
-        return (0, common_1.checkPresent)(res.data).revokeAuthorization;
+        return (0, common_2.resultData)(res).revokeAuthorization;
     }
     /**
      * Extracts definitions from one or more sources. These definitions can then
@@ -15356,33 +22406,36 @@ class OpviousClient {
      */
     async extractDefinitions(...sources) {
         const res = await this.sdk.ExtractDefinitions({ sources });
-        (0, common_1.assertNoErrors)(res);
         const defs = [];
-        for (const slice of (0, common_1.checkPresent)(res.data).extractDefinitions.slices) {
+        const snips = [];
+        for (const slice of (0, common_2.resultData)(res).extractDefinitions.slices) {
             if (slice.__typename === 'InvalidSourceSlice') {
-                throw new Error(slice.errorMessage);
+                const src = stl_errors_1.check.isPresent(sources[slice.index]);
+                snips.push((0, common_2.invalidSourceSnippet)(slice, src));
             }
-            defs.push(slice.definition);
+            else {
+                defs.push(slice.definition);
+            }
+        }
+        if (snips.length) {
+            throw common_2.clientErrors.unparseableSource(snips);
         }
         return defs;
     }
     /** Validates that the definitions are valid for registration. */
     async validateDefinitions(defs) {
         const res = await this.sdk.ValidateDefinitions({ definitions: defs });
-        (0, common_1.assertNoErrors)(res);
-        return (0, common_1.checkPresent)(res.data).validateDefinitions.warnings ?? [];
+        return (0, common_2.resultData)(res).validateDefinitions.warnings ?? [];
     }
     /** Adds a new specification. */
     async registerSpecification(input) {
         const res = await this.sdk.RegisterSpecification({ input });
-        (0, common_1.assertNoErrors)(res);
-        return (0, common_1.checkPresent)(res.data).registerSpecification;
+        return (0, common_2.resultData)(res).registerSpecification;
     }
     /** Updates a formulation's metadata. */
     async updateFormulation(input) {
         const res = await this.sdk.UpdateFormulation({ input });
-        (0, common_1.assertNoErrors)(res);
-        return (0, common_1.checkPresent)(res.data).updateFormulation;
+        return (0, common_2.resultData)(res).updateFormulation;
     }
     /** Fetches a formulation's outline. */
     async fetchOutline(formulationName, tagName) {
@@ -15390,18 +22443,16 @@ class OpviousClient {
             formulationName,
             tagName,
         });
-        (0, common_1.assertNoErrors)(res);
-        const form = (0, common_1.checkPresent)(res.data).formulation;
+        const form = (0, common_2.resultData)(res).formulation;
         if (!form?.tag) {
-            throw new Error('No such specification');
+            throw common_2.clientErrors.unknownFormulation(formulationName, tagName);
         }
         return { ...form, tag: form.tag };
     }
     /** Paginates available formulations. */
     async paginateFormulations(vars) {
         const res = await this.sdk.PaginateFormulations(vars);
-        (0, common_1.assertNoErrors)(res);
-        const forms = (0, common_1.checkPresent)(res.data).formulations;
+        const forms = (0, common_2.resultData)(res).formulations;
         return {
             info: forms.pageInfo,
             totalCount: forms.totalCount,
@@ -15411,8 +22462,7 @@ class OpviousClient {
     /** Deletes a formulation, returning true if a formulation was deleted. */
     async deleteFormulation(name) {
         const res = await this.sdk.DeleteFormulation({ name });
-        (0, common_1.assertNoErrors)(res);
-        return (0, common_1.checkPresent)(res.data).deleteFormulation.specificationCount > 0;
+        return (0, common_2.resultData)(res).deleteFormulation.specificationCount > 0;
     }
     /**
      * Makes a formulation's tag publicly accessible via a unique URL. This can be
@@ -15420,9 +22470,8 @@ class OpviousClient {
      */
     async shareFormulation(input) {
         const res = await this.sdk.StartSharingFormulation({ input });
-        (0, common_1.assertNoErrors)(res);
-        const tag = (0, common_1.checkPresent)(res.data).startSharingFormulation;
-        return { ...tag, sharedVia: (0, common_1.checkPresent)(tag.sharedVia) };
+        const tag = (0, common_2.resultData)(res).startSharingFormulation;
+        return { ...tag, sharedVia: stl_errors_1.check.isPresent(tag.sharedVia) };
     }
     /**
      * Makes a formulation's tag(s) private. If not tags are specified, all the
@@ -15430,13 +22479,12 @@ class OpviousClient {
      */
     async unshareFormulation(input) {
         const res = await this.sdk.StopSharingFormulation({ input });
-        (0, common_1.assertNoErrors)(res);
+        return (0, common_2.resultData)(res).stopSharingFormulation;
     }
     /** Paginates available attempts. */
     async paginateAttempts(vars) {
         const res = await this.sdk.PaginateAttempts(vars);
-        (0, common_1.assertNoErrors)(res);
-        const forms = (0, common_1.checkPresent)(res.data).attempts;
+        const forms = (0, common_2.resultData)(res).attempts;
         return {
             info: forms.pageInfo,
             totalCount: forms.totalCount,
@@ -15449,9 +22497,8 @@ class OpviousClient {
      * outputs, etc.
      */
     async startAttempt(input) {
-        const startRes = await this.sdk.StartAttempt({ input });
-        (0, common_1.assertNoErrors)(startRes);
-        return (0, common_1.checkPresent)(startRes.data).startAttempt;
+        const res = await this.sdk.StartAttempt({ input });
+        return (0, common_2.resultData)(res).startAttempt;
     }
     /**
      * Tracks an attempt until its outcome is decided, emitting it as `'outcome'`.
@@ -15466,8 +22513,8 @@ class OpviousClient {
             this.sdk
                 .PollAttempt({ uuid })
                 .then((res) => {
-                (0, common_1.assertNoErrors)(res);
-                const attempt = (0, common_1.checkPresent)(res.data?.attempt);
+                const { attempt } = (0, common_2.resultData)(res);
+                (0, stl_errors_1.assert)(attempt, 'Unknown attempt');
                 switch (attempt.status) {
                     case 'PENDING': {
                         const notif = attempt.notifications.edges[0]?.node;
@@ -15482,7 +22529,7 @@ class OpviousClient {
                     case 'UNBOUNDED':
                         throw new Error('Unbounded attempt');
                 }
-                const outcome = (0, common_1.checkPresent)(attempt.outcome);
+                const outcome = stl_errors_1.check.isPresent(attempt.outcome);
                 if (outcome.__typename === 'FailedOutcome') {
                     throw new Error(outcome.failure.message);
                 }
@@ -15506,21 +22553,19 @@ class OpviousClient {
     /** Cancels a pending attempt. */
     async cancelAttempt(uuid) {
         const res = await this.sdk.CancelAttempt({ uuid });
-        (0, common_1.assertNoErrors)(res);
+        return (0, common_2.resultData)(res).cancelAttempt;
     }
     /** Fetches an attempt from its UUID. */
     async fetchAttempt(uuid) {
         const res = await this.sdk.FetchAttempt({ uuid });
-        (0, common_1.assertNoErrors)(res);
-        return (0, common_1.checkPresent)(res.data).attempt;
+        return (0, common_2.resultData)(res).attempt;
     }
     /** Paginates an attempt's notifications. */
     async paginateAttemptNotifications(vars) {
         const res = await this.sdk.PaginateAttemptNotifications(vars);
-        (0, common_1.assertNoErrors)(res);
-        const notifs = (0, common_1.checkPresent)(res.data).attempt?.notifications;
+        const notifs = (0, common_2.resultData)(res).attempt?.notifications;
         if (!notifs) {
-            throw attemptNotFoundError(vars.uuid);
+            throw common_2.clientErrors.unknownAttempt(vars.uuid);
         }
         return {
             info: notifs.pageInfo,
@@ -15531,23 +22576,21 @@ class OpviousClient {
     /** Fetches an attempt's inputs from its UUID. */
     async fetchAttemptInputs(uuid) {
         const res = await this.sdk.FetchAttemptInputs({ uuid });
-        (0, common_1.assertNoErrors)(res);
-        const attempt = (0, common_1.checkPresent)(res.data).attempt;
+        const { attempt } = (0, common_2.resultData)(res);
         if (!attempt) {
-            throw attemptNotFoundError(uuid);
+            throw common_2.clientErrors.unknownAttempt(uuid);
         }
         return attempt;
     }
     /**
      * Fetches an attempt's outputs from its UUID. This method will returned
-     * `undefined` if the attempt is not feasible (e.g. still pending).
+     * `undefined` if the attempt is not feasible (e.api. still pending).
      * */
     async fetchAttemptOutputs(uuid) {
         const res = await this.sdk.FetchAttemptOutputs({ uuid });
-        (0, common_1.assertNoErrors)(res);
-        const attempt = (0, common_1.checkPresent)(res.data).attempt;
+        const { attempt } = (0, common_2.resultData)(res);
         if (!attempt) {
-            throw attemptNotFoundError(uuid);
+            throw common_2.clientErrors.unknownAttempt(uuid);
         }
         const { outcome } = attempt;
         return outcome?.__typename === 'FeasibleOutcome' ? outcome : undefined;
@@ -15570,22 +22613,19 @@ class OpviousClient {
     }
 }
 exports.OpviousClient = OpviousClient;
-var DefaultEndpoint;
-(function (DefaultEndpoint) {
-    DefaultEndpoint["API"] = "https://api.opvious.io";
-    DefaultEndpoint["HUB"] = "https://hub.opvious.io";
-})(DefaultEndpoint || (DefaultEndpoint = {}));
-const ENCODING_HEADER = 'content-encoding';
-const ENCODING_THRESHOLD = 2 ** 16; // 64 kiB
-function attemptNotFoundError(uuid) {
-    return new Error('Attempt not found: ' + uuid);
+const DEFAULT_DOMAIN = 'beta.opvious.io';
+function defaultEndpoint(leaf, domain = DEFAULT_DOMAIN) {
+    return `https://${leaf}.${domain}`;
 }
+const ENCODING_HEADER = 'content-encoding';
+const BROTLI_QUALITY = 4;
+const COMPRESSION_THRESHOLD = 2 ** 16; // 64 kiB
 
 
 /***/ }),
 
 /***/ 2026:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
@@ -15606,24 +22646,15 @@ function attemptNotFoundError(uuid) {
  * the License.
  */
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.strippingTrailingSlashes = exports.checkPresent = exports.assertNoErrors = exports.assert = void 0;
-function assert(pred) {
-    if (!pred) {
-        throw new Error('Assertion failed');
-    }
-}
-exports.assert = assert;
+exports.strippingTrailingSlashes = exports.assertNoErrors = exports.packageInfo = void 0;
+const stl_telemetry_1 = __nccwpck_require__(4782);
+exports.packageInfo = (0, stl_telemetry_1.enclosingPackageInfo)(__dirname);
 function assertNoErrors(res) {
     if (res.errors?.length) {
         throw new Error('API call failed: ' + JSON.stringify(res.errors, null, 2));
     }
 }
 exports.assertNoErrors = assertNoErrors;
-function checkPresent(arg) {
-    assert(arg != null);
-    return arg;
-}
-exports.checkPresent = checkPresent;
 function strippingTrailingSlashes(arg) {
     return arg.replace(/\/+$/, '');
 }
@@ -15669,6 +22700,2191 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 __exportStar(__nccwpck_require__(4434), exports);
+
+
+/***/ }),
+
+/***/ 8452:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.paramCase = void 0;
+var tslib_1 = __nccwpck_require__(4351);
+var dot_case_1 = __nccwpck_require__(2246);
+function paramCase(input, options) {
+    if (options === void 0) { options = {}; }
+    return dot_case_1.dotCase(input, tslib_1.__assign({ delimiter: "-" }, options));
+}
+exports.paramCase = paramCase;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 5995:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.pascalCase = exports.pascalCaseTransformMerge = exports.pascalCaseTransform = void 0;
+var tslib_1 = __nccwpck_require__(4351);
+var no_case_1 = __nccwpck_require__(397);
+function pascalCaseTransform(input, index) {
+    var firstChar = input.charAt(0);
+    var lowerChars = input.substr(1).toLowerCase();
+    if (index > 0 && firstChar >= "0" && firstChar <= "9") {
+        return "_" + firstChar + lowerChars;
+    }
+    return "" + firstChar.toUpperCase() + lowerChars;
+}
+exports.pascalCaseTransform = pascalCaseTransform;
+function pascalCaseTransformMerge(input) {
+    return input.charAt(0).toUpperCase() + input.slice(1).toLowerCase();
+}
+exports.pascalCaseTransformMerge = pascalCaseTransformMerge;
+function pascalCase(input, options) {
+    if (options === void 0) { options = {}; }
+    return no_case_1.noCase(input, tslib_1.__assign({ delimiter: "", transform: pascalCaseTransform }, options));
+}
+exports.pascalCase = pascalCase;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 3553:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.pathCase = void 0;
+var tslib_1 = __nccwpck_require__(4351);
+var dot_case_1 = __nccwpck_require__(2246);
+function pathCase(input, options) {
+    if (options === void 0) { options = {}; }
+    return dot_case_1.dotCase(input, tslib_1.__assign({ delimiter: "/" }, options));
+}
+exports.pathCase = pathCase;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 8569:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+module.exports = __nccwpck_require__(3322);
+
+
+/***/ }),
+
+/***/ 6099:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const path = __nccwpck_require__(1017);
+const WIN_SLASH = '\\\\/';
+const WIN_NO_SLASH = `[^${WIN_SLASH}]`;
+
+/**
+ * Posix glob regex
+ */
+
+const DOT_LITERAL = '\\.';
+const PLUS_LITERAL = '\\+';
+const QMARK_LITERAL = '\\?';
+const SLASH_LITERAL = '\\/';
+const ONE_CHAR = '(?=.)';
+const QMARK = '[^/]';
+const END_ANCHOR = `(?:${SLASH_LITERAL}|$)`;
+const START_ANCHOR = `(?:^|${SLASH_LITERAL})`;
+const DOTS_SLASH = `${DOT_LITERAL}{1,2}${END_ANCHOR}`;
+const NO_DOT = `(?!${DOT_LITERAL})`;
+const NO_DOTS = `(?!${START_ANCHOR}${DOTS_SLASH})`;
+const NO_DOT_SLASH = `(?!${DOT_LITERAL}{0,1}${END_ANCHOR})`;
+const NO_DOTS_SLASH = `(?!${DOTS_SLASH})`;
+const QMARK_NO_DOT = `[^.${SLASH_LITERAL}]`;
+const STAR = `${QMARK}*?`;
+
+const POSIX_CHARS = {
+  DOT_LITERAL,
+  PLUS_LITERAL,
+  QMARK_LITERAL,
+  SLASH_LITERAL,
+  ONE_CHAR,
+  QMARK,
+  END_ANCHOR,
+  DOTS_SLASH,
+  NO_DOT,
+  NO_DOTS,
+  NO_DOT_SLASH,
+  NO_DOTS_SLASH,
+  QMARK_NO_DOT,
+  STAR,
+  START_ANCHOR
+};
+
+/**
+ * Windows glob regex
+ */
+
+const WINDOWS_CHARS = {
+  ...POSIX_CHARS,
+
+  SLASH_LITERAL: `[${WIN_SLASH}]`,
+  QMARK: WIN_NO_SLASH,
+  STAR: `${WIN_NO_SLASH}*?`,
+  DOTS_SLASH: `${DOT_LITERAL}{1,2}(?:[${WIN_SLASH}]|$)`,
+  NO_DOT: `(?!${DOT_LITERAL})`,
+  NO_DOTS: `(?!(?:^|[${WIN_SLASH}])${DOT_LITERAL}{1,2}(?:[${WIN_SLASH}]|$))`,
+  NO_DOT_SLASH: `(?!${DOT_LITERAL}{0,1}(?:[${WIN_SLASH}]|$))`,
+  NO_DOTS_SLASH: `(?!${DOT_LITERAL}{1,2}(?:[${WIN_SLASH}]|$))`,
+  QMARK_NO_DOT: `[^.${WIN_SLASH}]`,
+  START_ANCHOR: `(?:^|[${WIN_SLASH}])`,
+  END_ANCHOR: `(?:[${WIN_SLASH}]|$)`
+};
+
+/**
+ * POSIX Bracket Regex
+ */
+
+const POSIX_REGEX_SOURCE = {
+  alnum: 'a-zA-Z0-9',
+  alpha: 'a-zA-Z',
+  ascii: '\\x00-\\x7F',
+  blank: ' \\t',
+  cntrl: '\\x00-\\x1F\\x7F',
+  digit: '0-9',
+  graph: '\\x21-\\x7E',
+  lower: 'a-z',
+  print: '\\x20-\\x7E ',
+  punct: '\\-!"#$%&\'()\\*+,./:;<=>?@[\\]^_`{|}~',
+  space: ' \\t\\r\\n\\v\\f',
+  upper: 'A-Z',
+  word: 'A-Za-z0-9_',
+  xdigit: 'A-Fa-f0-9'
+};
+
+module.exports = {
+  MAX_LENGTH: 1024 * 64,
+  POSIX_REGEX_SOURCE,
+
+  // regular expressions
+  REGEX_BACKSLASH: /\\(?![*+?^${}(|)[\]])/g,
+  REGEX_NON_SPECIAL_CHARS: /^[^@![\].,$*+?^{}()|\\/]+/,
+  REGEX_SPECIAL_CHARS: /[-*+?.^${}(|)[\]]/,
+  REGEX_SPECIAL_CHARS_BACKREF: /(\\?)((\W)(\3*))/g,
+  REGEX_SPECIAL_CHARS_GLOBAL: /([-*+?.^${}(|)[\]])/g,
+  REGEX_REMOVE_BACKSLASH: /(?:\[.*?[^\\]\]|\\(?=.))/g,
+
+  // Replace globs with equivalent patterns to reduce parsing time.
+  REPLACEMENTS: {
+    '***': '*',
+    '**/**': '**',
+    '**/**/**': '**'
+  },
+
+  // Digits
+  CHAR_0: 48, /* 0 */
+  CHAR_9: 57, /* 9 */
+
+  // Alphabet chars.
+  CHAR_UPPERCASE_A: 65, /* A */
+  CHAR_LOWERCASE_A: 97, /* a */
+  CHAR_UPPERCASE_Z: 90, /* Z */
+  CHAR_LOWERCASE_Z: 122, /* z */
+
+  CHAR_LEFT_PARENTHESES: 40, /* ( */
+  CHAR_RIGHT_PARENTHESES: 41, /* ) */
+
+  CHAR_ASTERISK: 42, /* * */
+
+  // Non-alphabetic chars.
+  CHAR_AMPERSAND: 38, /* & */
+  CHAR_AT: 64, /* @ */
+  CHAR_BACKWARD_SLASH: 92, /* \ */
+  CHAR_CARRIAGE_RETURN: 13, /* \r */
+  CHAR_CIRCUMFLEX_ACCENT: 94, /* ^ */
+  CHAR_COLON: 58, /* : */
+  CHAR_COMMA: 44, /* , */
+  CHAR_DOT: 46, /* . */
+  CHAR_DOUBLE_QUOTE: 34, /* " */
+  CHAR_EQUAL: 61, /* = */
+  CHAR_EXCLAMATION_MARK: 33, /* ! */
+  CHAR_FORM_FEED: 12, /* \f */
+  CHAR_FORWARD_SLASH: 47, /* / */
+  CHAR_GRAVE_ACCENT: 96, /* ` */
+  CHAR_HASH: 35, /* # */
+  CHAR_HYPHEN_MINUS: 45, /* - */
+  CHAR_LEFT_ANGLE_BRACKET: 60, /* < */
+  CHAR_LEFT_CURLY_BRACE: 123, /* { */
+  CHAR_LEFT_SQUARE_BRACKET: 91, /* [ */
+  CHAR_LINE_FEED: 10, /* \n */
+  CHAR_NO_BREAK_SPACE: 160, /* \u00A0 */
+  CHAR_PERCENT: 37, /* % */
+  CHAR_PLUS: 43, /* + */
+  CHAR_QUESTION_MARK: 63, /* ? */
+  CHAR_RIGHT_ANGLE_BRACKET: 62, /* > */
+  CHAR_RIGHT_CURLY_BRACE: 125, /* } */
+  CHAR_RIGHT_SQUARE_BRACKET: 93, /* ] */
+  CHAR_SEMICOLON: 59, /* ; */
+  CHAR_SINGLE_QUOTE: 39, /* ' */
+  CHAR_SPACE: 32, /*   */
+  CHAR_TAB: 9, /* \t */
+  CHAR_UNDERSCORE: 95, /* _ */
+  CHAR_VERTICAL_LINE: 124, /* | */
+  CHAR_ZERO_WIDTH_NOBREAK_SPACE: 65279, /* \uFEFF */
+
+  SEP: path.sep,
+
+  /**
+   * Create EXTGLOB_CHARS
+   */
+
+  extglobChars(chars) {
+    return {
+      '!': { type: 'negate', open: '(?:(?!(?:', close: `))${chars.STAR})` },
+      '?': { type: 'qmark', open: '(?:', close: ')?' },
+      '+': { type: 'plus', open: '(?:', close: ')+' },
+      '*': { type: 'star', open: '(?:', close: ')*' },
+      '@': { type: 'at', open: '(?:', close: ')' }
+    };
+  },
+
+  /**
+   * Create GLOB_CHARS
+   */
+
+  globChars(win32) {
+    return win32 === true ? WINDOWS_CHARS : POSIX_CHARS;
+  }
+};
+
+
+/***/ }),
+
+/***/ 2139:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const constants = __nccwpck_require__(6099);
+const utils = __nccwpck_require__(479);
+
+/**
+ * Constants
+ */
+
+const {
+  MAX_LENGTH,
+  POSIX_REGEX_SOURCE,
+  REGEX_NON_SPECIAL_CHARS,
+  REGEX_SPECIAL_CHARS_BACKREF,
+  REPLACEMENTS
+} = constants;
+
+/**
+ * Helpers
+ */
+
+const expandRange = (args, options) => {
+  if (typeof options.expandRange === 'function') {
+    return options.expandRange(...args, options);
+  }
+
+  args.sort();
+  const value = `[${args.join('-')}]`;
+
+  try {
+    /* eslint-disable-next-line no-new */
+    new RegExp(value);
+  } catch (ex) {
+    return args.map(v => utils.escapeRegex(v)).join('..');
+  }
+
+  return value;
+};
+
+/**
+ * Create the message for a syntax error
+ */
+
+const syntaxError = (type, char) => {
+  return `Missing ${type}: "${char}" - use "\\\\${char}" to match literal characters`;
+};
+
+/**
+ * Parse the given input string.
+ * @param {String} input
+ * @param {Object} options
+ * @return {Object}
+ */
+
+const parse = (input, options) => {
+  if (typeof input !== 'string') {
+    throw new TypeError('Expected a string');
+  }
+
+  input = REPLACEMENTS[input] || input;
+
+  const opts = { ...options };
+  const max = typeof opts.maxLength === 'number' ? Math.min(MAX_LENGTH, opts.maxLength) : MAX_LENGTH;
+
+  let len = input.length;
+  if (len > max) {
+    throw new SyntaxError(`Input length: ${len}, exceeds maximum allowed length: ${max}`);
+  }
+
+  const bos = { type: 'bos', value: '', output: opts.prepend || '' };
+  const tokens = [bos];
+
+  const capture = opts.capture ? '' : '?:';
+  const win32 = utils.isWindows(options);
+
+  // create constants based on platform, for windows or posix
+  const PLATFORM_CHARS = constants.globChars(win32);
+  const EXTGLOB_CHARS = constants.extglobChars(PLATFORM_CHARS);
+
+  const {
+    DOT_LITERAL,
+    PLUS_LITERAL,
+    SLASH_LITERAL,
+    ONE_CHAR,
+    DOTS_SLASH,
+    NO_DOT,
+    NO_DOT_SLASH,
+    NO_DOTS_SLASH,
+    QMARK,
+    QMARK_NO_DOT,
+    STAR,
+    START_ANCHOR
+  } = PLATFORM_CHARS;
+
+  const globstar = opts => {
+    return `(${capture}(?:(?!${START_ANCHOR}${opts.dot ? DOTS_SLASH : DOT_LITERAL}).)*?)`;
+  };
+
+  const nodot = opts.dot ? '' : NO_DOT;
+  const qmarkNoDot = opts.dot ? QMARK : QMARK_NO_DOT;
+  let star = opts.bash === true ? globstar(opts) : STAR;
+
+  if (opts.capture) {
+    star = `(${star})`;
+  }
+
+  // minimatch options support
+  if (typeof opts.noext === 'boolean') {
+    opts.noextglob = opts.noext;
+  }
+
+  const state = {
+    input,
+    index: -1,
+    start: 0,
+    dot: opts.dot === true,
+    consumed: '',
+    output: '',
+    prefix: '',
+    backtrack: false,
+    negated: false,
+    brackets: 0,
+    braces: 0,
+    parens: 0,
+    quotes: 0,
+    globstar: false,
+    tokens
+  };
+
+  input = utils.removePrefix(input, state);
+  len = input.length;
+
+  const extglobs = [];
+  const braces = [];
+  const stack = [];
+  let prev = bos;
+  let value;
+
+  /**
+   * Tokenizing helpers
+   */
+
+  const eos = () => state.index === len - 1;
+  const peek = state.peek = (n = 1) => input[state.index + n];
+  const advance = state.advance = () => input[++state.index] || '';
+  const remaining = () => input.slice(state.index + 1);
+  const consume = (value = '', num = 0) => {
+    state.consumed += value;
+    state.index += num;
+  };
+
+  const append = token => {
+    state.output += token.output != null ? token.output : token.value;
+    consume(token.value);
+  };
+
+  const negate = () => {
+    let count = 1;
+
+    while (peek() === '!' && (peek(2) !== '(' || peek(3) === '?')) {
+      advance();
+      state.start++;
+      count++;
+    }
+
+    if (count % 2 === 0) {
+      return false;
+    }
+
+    state.negated = true;
+    state.start++;
+    return true;
+  };
+
+  const increment = type => {
+    state[type]++;
+    stack.push(type);
+  };
+
+  const decrement = type => {
+    state[type]--;
+    stack.pop();
+  };
+
+  /**
+   * Push tokens onto the tokens array. This helper speeds up
+   * tokenizing by 1) helping us avoid backtracking as much as possible,
+   * and 2) helping us avoid creating extra tokens when consecutive
+   * characters are plain text. This improves performance and simplifies
+   * lookbehinds.
+   */
+
+  const push = tok => {
+    if (prev.type === 'globstar') {
+      const isBrace = state.braces > 0 && (tok.type === 'comma' || tok.type === 'brace');
+      const isExtglob = tok.extglob === true || (extglobs.length && (tok.type === 'pipe' || tok.type === 'paren'));
+
+      if (tok.type !== 'slash' && tok.type !== 'paren' && !isBrace && !isExtglob) {
+        state.output = state.output.slice(0, -prev.output.length);
+        prev.type = 'star';
+        prev.value = '*';
+        prev.output = star;
+        state.output += prev.output;
+      }
+    }
+
+    if (extglobs.length && tok.type !== 'paren') {
+      extglobs[extglobs.length - 1].inner += tok.value;
+    }
+
+    if (tok.value || tok.output) append(tok);
+    if (prev && prev.type === 'text' && tok.type === 'text') {
+      prev.value += tok.value;
+      prev.output = (prev.output || '') + tok.value;
+      return;
+    }
+
+    tok.prev = prev;
+    tokens.push(tok);
+    prev = tok;
+  };
+
+  const extglobOpen = (type, value) => {
+    const token = { ...EXTGLOB_CHARS[value], conditions: 1, inner: '' };
+
+    token.prev = prev;
+    token.parens = state.parens;
+    token.output = state.output;
+    const output = (opts.capture ? '(' : '') + token.open;
+
+    increment('parens');
+    push({ type, value, output: state.output ? '' : ONE_CHAR });
+    push({ type: 'paren', extglob: true, value: advance(), output });
+    extglobs.push(token);
+  };
+
+  const extglobClose = token => {
+    let output = token.close + (opts.capture ? ')' : '');
+    let rest;
+
+    if (token.type === 'negate') {
+      let extglobStar = star;
+
+      if (token.inner && token.inner.length > 1 && token.inner.includes('/')) {
+        extglobStar = globstar(opts);
+      }
+
+      if (extglobStar !== star || eos() || /^\)+$/.test(remaining())) {
+        output = token.close = `)$))${extglobStar}`;
+      }
+
+      if (token.inner.includes('*') && (rest = remaining()) && /^\.[^\\/.]+$/.test(rest)) {
+        // Any non-magical string (`.ts`) or even nested expression (`.{ts,tsx}`) can follow after the closing parenthesis.
+        // In this case, we need to parse the string and use it in the output of the original pattern.
+        // Suitable patterns: `/!(*.d).ts`, `/!(*.d).{ts,tsx}`, `**/!(*-dbg).@(js)`.
+        //
+        // Disabling the `fastpaths` option due to a problem with parsing strings as `.ts` in the pattern like `**/!(*.d).ts`.
+        const expression = parse(rest, { ...options, fastpaths: false }).output;
+
+        output = token.close = `)${expression})${extglobStar})`;
+      }
+
+      if (token.prev.type === 'bos') {
+        state.negatedExtglob = true;
+      }
+    }
+
+    push({ type: 'paren', extglob: true, value, output });
+    decrement('parens');
+  };
+
+  /**
+   * Fast paths
+   */
+
+  if (opts.fastpaths !== false && !/(^[*!]|[/()[\]{}"])/.test(input)) {
+    let backslashes = false;
+
+    let output = input.replace(REGEX_SPECIAL_CHARS_BACKREF, (m, esc, chars, first, rest, index) => {
+      if (first === '\\') {
+        backslashes = true;
+        return m;
+      }
+
+      if (first === '?') {
+        if (esc) {
+          return esc + first + (rest ? QMARK.repeat(rest.length) : '');
+        }
+        if (index === 0) {
+          return qmarkNoDot + (rest ? QMARK.repeat(rest.length) : '');
+        }
+        return QMARK.repeat(chars.length);
+      }
+
+      if (first === '.') {
+        return DOT_LITERAL.repeat(chars.length);
+      }
+
+      if (first === '*') {
+        if (esc) {
+          return esc + first + (rest ? star : '');
+        }
+        return star;
+      }
+      return esc ? m : `\\${m}`;
+    });
+
+    if (backslashes === true) {
+      if (opts.unescape === true) {
+        output = output.replace(/\\/g, '');
+      } else {
+        output = output.replace(/\\+/g, m => {
+          return m.length % 2 === 0 ? '\\\\' : (m ? '\\' : '');
+        });
+      }
+    }
+
+    if (output === input && opts.contains === true) {
+      state.output = input;
+      return state;
+    }
+
+    state.output = utils.wrapOutput(output, state, options);
+    return state;
+  }
+
+  /**
+   * Tokenize input until we reach end-of-string
+   */
+
+  while (!eos()) {
+    value = advance();
+
+    if (value === '\u0000') {
+      continue;
+    }
+
+    /**
+     * Escaped characters
+     */
+
+    if (value === '\\') {
+      const next = peek();
+
+      if (next === '/' && opts.bash !== true) {
+        continue;
+      }
+
+      if (next === '.' || next === ';') {
+        continue;
+      }
+
+      if (!next) {
+        value += '\\';
+        push({ type: 'text', value });
+        continue;
+      }
+
+      // collapse slashes to reduce potential for exploits
+      const match = /^\\+/.exec(remaining());
+      let slashes = 0;
+
+      if (match && match[0].length > 2) {
+        slashes = match[0].length;
+        state.index += slashes;
+        if (slashes % 2 !== 0) {
+          value += '\\';
+        }
+      }
+
+      if (opts.unescape === true) {
+        value = advance();
+      } else {
+        value += advance();
+      }
+
+      if (state.brackets === 0) {
+        push({ type: 'text', value });
+        continue;
+      }
+    }
+
+    /**
+     * If we're inside a regex character class, continue
+     * until we reach the closing bracket.
+     */
+
+    if (state.brackets > 0 && (value !== ']' || prev.value === '[' || prev.value === '[^')) {
+      if (opts.posix !== false && value === ':') {
+        const inner = prev.value.slice(1);
+        if (inner.includes('[')) {
+          prev.posix = true;
+
+          if (inner.includes(':')) {
+            const idx = prev.value.lastIndexOf('[');
+            const pre = prev.value.slice(0, idx);
+            const rest = prev.value.slice(idx + 2);
+            const posix = POSIX_REGEX_SOURCE[rest];
+            if (posix) {
+              prev.value = pre + posix;
+              state.backtrack = true;
+              advance();
+
+              if (!bos.output && tokens.indexOf(prev) === 1) {
+                bos.output = ONE_CHAR;
+              }
+              continue;
+            }
+          }
+        }
+      }
+
+      if ((value === '[' && peek() !== ':') || (value === '-' && peek() === ']')) {
+        value = `\\${value}`;
+      }
+
+      if (value === ']' && (prev.value === '[' || prev.value === '[^')) {
+        value = `\\${value}`;
+      }
+
+      if (opts.posix === true && value === '!' && prev.value === '[') {
+        value = '^';
+      }
+
+      prev.value += value;
+      append({ value });
+      continue;
+    }
+
+    /**
+     * If we're inside a quoted string, continue
+     * until we reach the closing double quote.
+     */
+
+    if (state.quotes === 1 && value !== '"') {
+      value = utils.escapeRegex(value);
+      prev.value += value;
+      append({ value });
+      continue;
+    }
+
+    /**
+     * Double quotes
+     */
+
+    if (value === '"') {
+      state.quotes = state.quotes === 1 ? 0 : 1;
+      if (opts.keepQuotes === true) {
+        push({ type: 'text', value });
+      }
+      continue;
+    }
+
+    /**
+     * Parentheses
+     */
+
+    if (value === '(') {
+      increment('parens');
+      push({ type: 'paren', value });
+      continue;
+    }
+
+    if (value === ')') {
+      if (state.parens === 0 && opts.strictBrackets === true) {
+        throw new SyntaxError(syntaxError('opening', '('));
+      }
+
+      const extglob = extglobs[extglobs.length - 1];
+      if (extglob && state.parens === extglob.parens + 1) {
+        extglobClose(extglobs.pop());
+        continue;
+      }
+
+      push({ type: 'paren', value, output: state.parens ? ')' : '\\)' });
+      decrement('parens');
+      continue;
+    }
+
+    /**
+     * Square brackets
+     */
+
+    if (value === '[') {
+      if (opts.nobracket === true || !remaining().includes(']')) {
+        if (opts.nobracket !== true && opts.strictBrackets === true) {
+          throw new SyntaxError(syntaxError('closing', ']'));
+        }
+
+        value = `\\${value}`;
+      } else {
+        increment('brackets');
+      }
+
+      push({ type: 'bracket', value });
+      continue;
+    }
+
+    if (value === ']') {
+      if (opts.nobracket === true || (prev && prev.type === 'bracket' && prev.value.length === 1)) {
+        push({ type: 'text', value, output: `\\${value}` });
+        continue;
+      }
+
+      if (state.brackets === 0) {
+        if (opts.strictBrackets === true) {
+          throw new SyntaxError(syntaxError('opening', '['));
+        }
+
+        push({ type: 'text', value, output: `\\${value}` });
+        continue;
+      }
+
+      decrement('brackets');
+
+      const prevValue = prev.value.slice(1);
+      if (prev.posix !== true && prevValue[0] === '^' && !prevValue.includes('/')) {
+        value = `/${value}`;
+      }
+
+      prev.value += value;
+      append({ value });
+
+      // when literal brackets are explicitly disabled
+      // assume we should match with a regex character class
+      if (opts.literalBrackets === false || utils.hasRegexChars(prevValue)) {
+        continue;
+      }
+
+      const escaped = utils.escapeRegex(prev.value);
+      state.output = state.output.slice(0, -prev.value.length);
+
+      // when literal brackets are explicitly enabled
+      // assume we should escape the brackets to match literal characters
+      if (opts.literalBrackets === true) {
+        state.output += escaped;
+        prev.value = escaped;
+        continue;
+      }
+
+      // when the user specifies nothing, try to match both
+      prev.value = `(${capture}${escaped}|${prev.value})`;
+      state.output += prev.value;
+      continue;
+    }
+
+    /**
+     * Braces
+     */
+
+    if (value === '{' && opts.nobrace !== true) {
+      increment('braces');
+
+      const open = {
+        type: 'brace',
+        value,
+        output: '(',
+        outputIndex: state.output.length,
+        tokensIndex: state.tokens.length
+      };
+
+      braces.push(open);
+      push(open);
+      continue;
+    }
+
+    if (value === '}') {
+      const brace = braces[braces.length - 1];
+
+      if (opts.nobrace === true || !brace) {
+        push({ type: 'text', value, output: value });
+        continue;
+      }
+
+      let output = ')';
+
+      if (brace.dots === true) {
+        const arr = tokens.slice();
+        const range = [];
+
+        for (let i = arr.length - 1; i >= 0; i--) {
+          tokens.pop();
+          if (arr[i].type === 'brace') {
+            break;
+          }
+          if (arr[i].type !== 'dots') {
+            range.unshift(arr[i].value);
+          }
+        }
+
+        output = expandRange(range, opts);
+        state.backtrack = true;
+      }
+
+      if (brace.comma !== true && brace.dots !== true) {
+        const out = state.output.slice(0, brace.outputIndex);
+        const toks = state.tokens.slice(brace.tokensIndex);
+        brace.value = brace.output = '\\{';
+        value = output = '\\}';
+        state.output = out;
+        for (const t of toks) {
+          state.output += (t.output || t.value);
+        }
+      }
+
+      push({ type: 'brace', value, output });
+      decrement('braces');
+      braces.pop();
+      continue;
+    }
+
+    /**
+     * Pipes
+     */
+
+    if (value === '|') {
+      if (extglobs.length > 0) {
+        extglobs[extglobs.length - 1].conditions++;
+      }
+      push({ type: 'text', value });
+      continue;
+    }
+
+    /**
+     * Commas
+     */
+
+    if (value === ',') {
+      let output = value;
+
+      const brace = braces[braces.length - 1];
+      if (brace && stack[stack.length - 1] === 'braces') {
+        brace.comma = true;
+        output = '|';
+      }
+
+      push({ type: 'comma', value, output });
+      continue;
+    }
+
+    /**
+     * Slashes
+     */
+
+    if (value === '/') {
+      // if the beginning of the glob is "./", advance the start
+      // to the current index, and don't add the "./" characters
+      // to the state. This greatly simplifies lookbehinds when
+      // checking for BOS characters like "!" and "." (not "./")
+      if (prev.type === 'dot' && state.index === state.start + 1) {
+        state.start = state.index + 1;
+        state.consumed = '';
+        state.output = '';
+        tokens.pop();
+        prev = bos; // reset "prev" to the first token
+        continue;
+      }
+
+      push({ type: 'slash', value, output: SLASH_LITERAL });
+      continue;
+    }
+
+    /**
+     * Dots
+     */
+
+    if (value === '.') {
+      if (state.braces > 0 && prev.type === 'dot') {
+        if (prev.value === '.') prev.output = DOT_LITERAL;
+        const brace = braces[braces.length - 1];
+        prev.type = 'dots';
+        prev.output += value;
+        prev.value += value;
+        brace.dots = true;
+        continue;
+      }
+
+      if ((state.braces + state.parens) === 0 && prev.type !== 'bos' && prev.type !== 'slash') {
+        push({ type: 'text', value, output: DOT_LITERAL });
+        continue;
+      }
+
+      push({ type: 'dot', value, output: DOT_LITERAL });
+      continue;
+    }
+
+    /**
+     * Question marks
+     */
+
+    if (value === '?') {
+      const isGroup = prev && prev.value === '(';
+      if (!isGroup && opts.noextglob !== true && peek() === '(' && peek(2) !== '?') {
+        extglobOpen('qmark', value);
+        continue;
+      }
+
+      if (prev && prev.type === 'paren') {
+        const next = peek();
+        let output = value;
+
+        if (next === '<' && !utils.supportsLookbehinds()) {
+          throw new Error('Node.js v10 or higher is required for regex lookbehinds');
+        }
+
+        if ((prev.value === '(' && !/[!=<:]/.test(next)) || (next === '<' && !/<([!=]|\w+>)/.test(remaining()))) {
+          output = `\\${value}`;
+        }
+
+        push({ type: 'text', value, output });
+        continue;
+      }
+
+      if (opts.dot !== true && (prev.type === 'slash' || prev.type === 'bos')) {
+        push({ type: 'qmark', value, output: QMARK_NO_DOT });
+        continue;
+      }
+
+      push({ type: 'qmark', value, output: QMARK });
+      continue;
+    }
+
+    /**
+     * Exclamation
+     */
+
+    if (value === '!') {
+      if (opts.noextglob !== true && peek() === '(') {
+        if (peek(2) !== '?' || !/[!=<:]/.test(peek(3))) {
+          extglobOpen('negate', value);
+          continue;
+        }
+      }
+
+      if (opts.nonegate !== true && state.index === 0) {
+        negate();
+        continue;
+      }
+    }
+
+    /**
+     * Plus
+     */
+
+    if (value === '+') {
+      if (opts.noextglob !== true && peek() === '(' && peek(2) !== '?') {
+        extglobOpen('plus', value);
+        continue;
+      }
+
+      if ((prev && prev.value === '(') || opts.regex === false) {
+        push({ type: 'plus', value, output: PLUS_LITERAL });
+        continue;
+      }
+
+      if ((prev && (prev.type === 'bracket' || prev.type === 'paren' || prev.type === 'brace')) || state.parens > 0) {
+        push({ type: 'plus', value });
+        continue;
+      }
+
+      push({ type: 'plus', value: PLUS_LITERAL });
+      continue;
+    }
+
+    /**
+     * Plain text
+     */
+
+    if (value === '@') {
+      if (opts.noextglob !== true && peek() === '(' && peek(2) !== '?') {
+        push({ type: 'at', extglob: true, value, output: '' });
+        continue;
+      }
+
+      push({ type: 'text', value });
+      continue;
+    }
+
+    /**
+     * Plain text
+     */
+
+    if (value !== '*') {
+      if (value === '$' || value === '^') {
+        value = `\\${value}`;
+      }
+
+      const match = REGEX_NON_SPECIAL_CHARS.exec(remaining());
+      if (match) {
+        value += match[0];
+        state.index += match[0].length;
+      }
+
+      push({ type: 'text', value });
+      continue;
+    }
+
+    /**
+     * Stars
+     */
+
+    if (prev && (prev.type === 'globstar' || prev.star === true)) {
+      prev.type = 'star';
+      prev.star = true;
+      prev.value += value;
+      prev.output = star;
+      state.backtrack = true;
+      state.globstar = true;
+      consume(value);
+      continue;
+    }
+
+    let rest = remaining();
+    if (opts.noextglob !== true && /^\([^?]/.test(rest)) {
+      extglobOpen('star', value);
+      continue;
+    }
+
+    if (prev.type === 'star') {
+      if (opts.noglobstar === true) {
+        consume(value);
+        continue;
+      }
+
+      const prior = prev.prev;
+      const before = prior.prev;
+      const isStart = prior.type === 'slash' || prior.type === 'bos';
+      const afterStar = before && (before.type === 'star' || before.type === 'globstar');
+
+      if (opts.bash === true && (!isStart || (rest[0] && rest[0] !== '/'))) {
+        push({ type: 'star', value, output: '' });
+        continue;
+      }
+
+      const isBrace = state.braces > 0 && (prior.type === 'comma' || prior.type === 'brace');
+      const isExtglob = extglobs.length && (prior.type === 'pipe' || prior.type === 'paren');
+      if (!isStart && prior.type !== 'paren' && !isBrace && !isExtglob) {
+        push({ type: 'star', value, output: '' });
+        continue;
+      }
+
+      // strip consecutive `/**/`
+      while (rest.slice(0, 3) === '/**') {
+        const after = input[state.index + 4];
+        if (after && after !== '/') {
+          break;
+        }
+        rest = rest.slice(3);
+        consume('/**', 3);
+      }
+
+      if (prior.type === 'bos' && eos()) {
+        prev.type = 'globstar';
+        prev.value += value;
+        prev.output = globstar(opts);
+        state.output = prev.output;
+        state.globstar = true;
+        consume(value);
+        continue;
+      }
+
+      if (prior.type === 'slash' && prior.prev.type !== 'bos' && !afterStar && eos()) {
+        state.output = state.output.slice(0, -(prior.output + prev.output).length);
+        prior.output = `(?:${prior.output}`;
+
+        prev.type = 'globstar';
+        prev.output = globstar(opts) + (opts.strictSlashes ? ')' : '|$)');
+        prev.value += value;
+        state.globstar = true;
+        state.output += prior.output + prev.output;
+        consume(value);
+        continue;
+      }
+
+      if (prior.type === 'slash' && prior.prev.type !== 'bos' && rest[0] === '/') {
+        const end = rest[1] !== void 0 ? '|$' : '';
+
+        state.output = state.output.slice(0, -(prior.output + prev.output).length);
+        prior.output = `(?:${prior.output}`;
+
+        prev.type = 'globstar';
+        prev.output = `${globstar(opts)}${SLASH_LITERAL}|${SLASH_LITERAL}${end})`;
+        prev.value += value;
+
+        state.output += prior.output + prev.output;
+        state.globstar = true;
+
+        consume(value + advance());
+
+        push({ type: 'slash', value: '/', output: '' });
+        continue;
+      }
+
+      if (prior.type === 'bos' && rest[0] === '/') {
+        prev.type = 'globstar';
+        prev.value += value;
+        prev.output = `(?:^|${SLASH_LITERAL}|${globstar(opts)}${SLASH_LITERAL})`;
+        state.output = prev.output;
+        state.globstar = true;
+        consume(value + advance());
+        push({ type: 'slash', value: '/', output: '' });
+        continue;
+      }
+
+      // remove single star from output
+      state.output = state.output.slice(0, -prev.output.length);
+
+      // reset previous token to globstar
+      prev.type = 'globstar';
+      prev.output = globstar(opts);
+      prev.value += value;
+
+      // reset output with globstar
+      state.output += prev.output;
+      state.globstar = true;
+      consume(value);
+      continue;
+    }
+
+    const token = { type: 'star', value, output: star };
+
+    if (opts.bash === true) {
+      token.output = '.*?';
+      if (prev.type === 'bos' || prev.type === 'slash') {
+        token.output = nodot + token.output;
+      }
+      push(token);
+      continue;
+    }
+
+    if (prev && (prev.type === 'bracket' || prev.type === 'paren') && opts.regex === true) {
+      token.output = value;
+      push(token);
+      continue;
+    }
+
+    if (state.index === state.start || prev.type === 'slash' || prev.type === 'dot') {
+      if (prev.type === 'dot') {
+        state.output += NO_DOT_SLASH;
+        prev.output += NO_DOT_SLASH;
+
+      } else if (opts.dot === true) {
+        state.output += NO_DOTS_SLASH;
+        prev.output += NO_DOTS_SLASH;
+
+      } else {
+        state.output += nodot;
+        prev.output += nodot;
+      }
+
+      if (peek() !== '*') {
+        state.output += ONE_CHAR;
+        prev.output += ONE_CHAR;
+      }
+    }
+
+    push(token);
+  }
+
+  while (state.brackets > 0) {
+    if (opts.strictBrackets === true) throw new SyntaxError(syntaxError('closing', ']'));
+    state.output = utils.escapeLast(state.output, '[');
+    decrement('brackets');
+  }
+
+  while (state.parens > 0) {
+    if (opts.strictBrackets === true) throw new SyntaxError(syntaxError('closing', ')'));
+    state.output = utils.escapeLast(state.output, '(');
+    decrement('parens');
+  }
+
+  while (state.braces > 0) {
+    if (opts.strictBrackets === true) throw new SyntaxError(syntaxError('closing', '}'));
+    state.output = utils.escapeLast(state.output, '{');
+    decrement('braces');
+  }
+
+  if (opts.strictSlashes !== true && (prev.type === 'star' || prev.type === 'bracket')) {
+    push({ type: 'maybe_slash', value: '', output: `${SLASH_LITERAL}?` });
+  }
+
+  // rebuild the output if we had to backtrack at any point
+  if (state.backtrack === true) {
+    state.output = '';
+
+    for (const token of state.tokens) {
+      state.output += token.output != null ? token.output : token.value;
+
+      if (token.suffix) {
+        state.output += token.suffix;
+      }
+    }
+  }
+
+  return state;
+};
+
+/**
+ * Fast paths for creating regular expressions for common glob patterns.
+ * This can significantly speed up processing and has very little downside
+ * impact when none of the fast paths match.
+ */
+
+parse.fastpaths = (input, options) => {
+  const opts = { ...options };
+  const max = typeof opts.maxLength === 'number' ? Math.min(MAX_LENGTH, opts.maxLength) : MAX_LENGTH;
+  const len = input.length;
+  if (len > max) {
+    throw new SyntaxError(`Input length: ${len}, exceeds maximum allowed length: ${max}`);
+  }
+
+  input = REPLACEMENTS[input] || input;
+  const win32 = utils.isWindows(options);
+
+  // create constants based on platform, for windows or posix
+  const {
+    DOT_LITERAL,
+    SLASH_LITERAL,
+    ONE_CHAR,
+    DOTS_SLASH,
+    NO_DOT,
+    NO_DOTS,
+    NO_DOTS_SLASH,
+    STAR,
+    START_ANCHOR
+  } = constants.globChars(win32);
+
+  const nodot = opts.dot ? NO_DOTS : NO_DOT;
+  const slashDot = opts.dot ? NO_DOTS_SLASH : NO_DOT;
+  const capture = opts.capture ? '' : '?:';
+  const state = { negated: false, prefix: '' };
+  let star = opts.bash === true ? '.*?' : STAR;
+
+  if (opts.capture) {
+    star = `(${star})`;
+  }
+
+  const globstar = opts => {
+    if (opts.noglobstar === true) return star;
+    return `(${capture}(?:(?!${START_ANCHOR}${opts.dot ? DOTS_SLASH : DOT_LITERAL}).)*?)`;
+  };
+
+  const create = str => {
+    switch (str) {
+      case '*':
+        return `${nodot}${ONE_CHAR}${star}`;
+
+      case '.*':
+        return `${DOT_LITERAL}${ONE_CHAR}${star}`;
+
+      case '*.*':
+        return `${nodot}${star}${DOT_LITERAL}${ONE_CHAR}${star}`;
+
+      case '*/*':
+        return `${nodot}${star}${SLASH_LITERAL}${ONE_CHAR}${slashDot}${star}`;
+
+      case '**':
+        return nodot + globstar(opts);
+
+      case '**/*':
+        return `(?:${nodot}${globstar(opts)}${SLASH_LITERAL})?${slashDot}${ONE_CHAR}${star}`;
+
+      case '**/*.*':
+        return `(?:${nodot}${globstar(opts)}${SLASH_LITERAL})?${slashDot}${star}${DOT_LITERAL}${ONE_CHAR}${star}`;
+
+      case '**/.*':
+        return `(?:${nodot}${globstar(opts)}${SLASH_LITERAL})?${DOT_LITERAL}${ONE_CHAR}${star}`;
+
+      default: {
+        const match = /^(.*?)\.(\w+)$/.exec(str);
+        if (!match) return;
+
+        const source = create(match[1]);
+        if (!source) return;
+
+        return source + DOT_LITERAL + match[2];
+      }
+    }
+  };
+
+  const output = utils.removePrefix(input, state);
+  let source = create(output);
+
+  if (source && opts.strictSlashes !== true) {
+    source += `${SLASH_LITERAL}?`;
+  }
+
+  return source;
+};
+
+module.exports = parse;
+
+
+/***/ }),
+
+/***/ 3322:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const path = __nccwpck_require__(1017);
+const scan = __nccwpck_require__(2429);
+const parse = __nccwpck_require__(2139);
+const utils = __nccwpck_require__(479);
+const constants = __nccwpck_require__(6099);
+const isObject = val => val && typeof val === 'object' && !Array.isArray(val);
+
+/**
+ * Creates a matcher function from one or more glob patterns. The
+ * returned function takes a string to match as its first argument,
+ * and returns true if the string is a match. The returned matcher
+ * function also takes a boolean as the second argument that, when true,
+ * returns an object with additional information.
+ *
+ * ```js
+ * const picomatch = require('picomatch');
+ * // picomatch(glob[, options]);
+ *
+ * const isMatch = picomatch('*.!(*a)');
+ * console.log(isMatch('a.a')); //=> false
+ * console.log(isMatch('a.b')); //=> true
+ * ```
+ * @name picomatch
+ * @param {String|Array} `globs` One or more glob patterns.
+ * @param {Object=} `options`
+ * @return {Function=} Returns a matcher function.
+ * @api public
+ */
+
+const picomatch = (glob, options, returnState = false) => {
+  if (Array.isArray(glob)) {
+    const fns = glob.map(input => picomatch(input, options, returnState));
+    const arrayMatcher = str => {
+      for (const isMatch of fns) {
+        const state = isMatch(str);
+        if (state) return state;
+      }
+      return false;
+    };
+    return arrayMatcher;
+  }
+
+  const isState = isObject(glob) && glob.tokens && glob.input;
+
+  if (glob === '' || (typeof glob !== 'string' && !isState)) {
+    throw new TypeError('Expected pattern to be a non-empty string');
+  }
+
+  const opts = options || {};
+  const posix = utils.isWindows(options);
+  const regex = isState
+    ? picomatch.compileRe(glob, options)
+    : picomatch.makeRe(glob, options, false, true);
+
+  const state = regex.state;
+  delete regex.state;
+
+  let isIgnored = () => false;
+  if (opts.ignore) {
+    const ignoreOpts = { ...options, ignore: null, onMatch: null, onResult: null };
+    isIgnored = picomatch(opts.ignore, ignoreOpts, returnState);
+  }
+
+  const matcher = (input, returnObject = false) => {
+    const { isMatch, match, output } = picomatch.test(input, regex, options, { glob, posix });
+    const result = { glob, state, regex, posix, input, output, match, isMatch };
+
+    if (typeof opts.onResult === 'function') {
+      opts.onResult(result);
+    }
+
+    if (isMatch === false) {
+      result.isMatch = false;
+      return returnObject ? result : false;
+    }
+
+    if (isIgnored(input)) {
+      if (typeof opts.onIgnore === 'function') {
+        opts.onIgnore(result);
+      }
+      result.isMatch = false;
+      return returnObject ? result : false;
+    }
+
+    if (typeof opts.onMatch === 'function') {
+      opts.onMatch(result);
+    }
+    return returnObject ? result : true;
+  };
+
+  if (returnState) {
+    matcher.state = state;
+  }
+
+  return matcher;
+};
+
+/**
+ * Test `input` with the given `regex`. This is used by the main
+ * `picomatch()` function to test the input string.
+ *
+ * ```js
+ * const picomatch = require('picomatch');
+ * // picomatch.test(input, regex[, options]);
+ *
+ * console.log(picomatch.test('foo/bar', /^(?:([^/]*?)\/([^/]*?))$/));
+ * // { isMatch: true, match: [ 'foo/', 'foo', 'bar' ], output: 'foo/bar' }
+ * ```
+ * @param {String} `input` String to test.
+ * @param {RegExp} `regex`
+ * @return {Object} Returns an object with matching info.
+ * @api public
+ */
+
+picomatch.test = (input, regex, options, { glob, posix } = {}) => {
+  if (typeof input !== 'string') {
+    throw new TypeError('Expected input to be a string');
+  }
+
+  if (input === '') {
+    return { isMatch: false, output: '' };
+  }
+
+  const opts = options || {};
+  const format = opts.format || (posix ? utils.toPosixSlashes : null);
+  let match = input === glob;
+  let output = (match && format) ? format(input) : input;
+
+  if (match === false) {
+    output = format ? format(input) : input;
+    match = output === glob;
+  }
+
+  if (match === false || opts.capture === true) {
+    if (opts.matchBase === true || opts.basename === true) {
+      match = picomatch.matchBase(input, regex, options, posix);
+    } else {
+      match = regex.exec(output);
+    }
+  }
+
+  return { isMatch: Boolean(match), match, output };
+};
+
+/**
+ * Match the basename of a filepath.
+ *
+ * ```js
+ * const picomatch = require('picomatch');
+ * // picomatch.matchBase(input, glob[, options]);
+ * console.log(picomatch.matchBase('foo/bar.js', '*.js'); // true
+ * ```
+ * @param {String} `input` String to test.
+ * @param {RegExp|String} `glob` Glob pattern or regex created by [.makeRe](#makeRe).
+ * @return {Boolean}
+ * @api public
+ */
+
+picomatch.matchBase = (input, glob, options, posix = utils.isWindows(options)) => {
+  const regex = glob instanceof RegExp ? glob : picomatch.makeRe(glob, options);
+  return regex.test(path.basename(input));
+};
+
+/**
+ * Returns true if **any** of the given glob `patterns` match the specified `string`.
+ *
+ * ```js
+ * const picomatch = require('picomatch');
+ * // picomatch.isMatch(string, patterns[, options]);
+ *
+ * console.log(picomatch.isMatch('a.a', ['b.*', '*.a'])); //=> true
+ * console.log(picomatch.isMatch('a.a', 'b.*')); //=> false
+ * ```
+ * @param {String|Array} str The string to test.
+ * @param {String|Array} patterns One or more glob patterns to use for matching.
+ * @param {Object} [options] See available [options](#options).
+ * @return {Boolean} Returns true if any patterns match `str`
+ * @api public
+ */
+
+picomatch.isMatch = (str, patterns, options) => picomatch(patterns, options)(str);
+
+/**
+ * Parse a glob pattern to create the source string for a regular
+ * expression.
+ *
+ * ```js
+ * const picomatch = require('picomatch');
+ * const result = picomatch.parse(pattern[, options]);
+ * ```
+ * @param {String} `pattern`
+ * @param {Object} `options`
+ * @return {Object} Returns an object with useful properties and output to be used as a regex source string.
+ * @api public
+ */
+
+picomatch.parse = (pattern, options) => {
+  if (Array.isArray(pattern)) return pattern.map(p => picomatch.parse(p, options));
+  return parse(pattern, { ...options, fastpaths: false });
+};
+
+/**
+ * Scan a glob pattern to separate the pattern into segments.
+ *
+ * ```js
+ * const picomatch = require('picomatch');
+ * // picomatch.scan(input[, options]);
+ *
+ * const result = picomatch.scan('!./foo/*.js');
+ * console.log(result);
+ * { prefix: '!./',
+ *   input: '!./foo/*.js',
+ *   start: 3,
+ *   base: 'foo',
+ *   glob: '*.js',
+ *   isBrace: false,
+ *   isBracket: false,
+ *   isGlob: true,
+ *   isExtglob: false,
+ *   isGlobstar: false,
+ *   negated: true }
+ * ```
+ * @param {String} `input` Glob pattern to scan.
+ * @param {Object} `options`
+ * @return {Object} Returns an object with
+ * @api public
+ */
+
+picomatch.scan = (input, options) => scan(input, options);
+
+/**
+ * Compile a regular expression from the `state` object returned by the
+ * [parse()](#parse) method.
+ *
+ * @param {Object} `state`
+ * @param {Object} `options`
+ * @param {Boolean} `returnOutput` Intended for implementors, this argument allows you to return the raw output from the parser.
+ * @param {Boolean} `returnState` Adds the state to a `state` property on the returned regex. Useful for implementors and debugging.
+ * @return {RegExp}
+ * @api public
+ */
+
+picomatch.compileRe = (state, options, returnOutput = false, returnState = false) => {
+  if (returnOutput === true) {
+    return state.output;
+  }
+
+  const opts = options || {};
+  const prepend = opts.contains ? '' : '^';
+  const append = opts.contains ? '' : '$';
+
+  let source = `${prepend}(?:${state.output})${append}`;
+  if (state && state.negated === true) {
+    source = `^(?!${source}).*$`;
+  }
+
+  const regex = picomatch.toRegex(source, options);
+  if (returnState === true) {
+    regex.state = state;
+  }
+
+  return regex;
+};
+
+/**
+ * Create a regular expression from a parsed glob pattern.
+ *
+ * ```js
+ * const picomatch = require('picomatch');
+ * const state = picomatch.parse('*.js');
+ * // picomatch.compileRe(state[, options]);
+ *
+ * console.log(picomatch.compileRe(state));
+ * //=> /^(?:(?!\.)(?=.)[^/]*?\.js)$/
+ * ```
+ * @param {String} `state` The object returned from the `.parse` method.
+ * @param {Object} `options`
+ * @param {Boolean} `returnOutput` Implementors may use this argument to return the compiled output, instead of a regular expression. This is not exposed on the options to prevent end-users from mutating the result.
+ * @param {Boolean} `returnState` Implementors may use this argument to return the state from the parsed glob with the returned regular expression.
+ * @return {RegExp} Returns a regex created from the given pattern.
+ * @api public
+ */
+
+picomatch.makeRe = (input, options = {}, returnOutput = false, returnState = false) => {
+  if (!input || typeof input !== 'string') {
+    throw new TypeError('Expected a non-empty string');
+  }
+
+  let parsed = { negated: false, fastpaths: true };
+
+  if (options.fastpaths !== false && (input[0] === '.' || input[0] === '*')) {
+    parsed.output = parse.fastpaths(input, options);
+  }
+
+  if (!parsed.output) {
+    parsed = parse(input, options);
+  }
+
+  return picomatch.compileRe(parsed, options, returnOutput, returnState);
+};
+
+/**
+ * Create a regular expression from the given regex source string.
+ *
+ * ```js
+ * const picomatch = require('picomatch');
+ * // picomatch.toRegex(source[, options]);
+ *
+ * const { output } = picomatch.parse('*.js');
+ * console.log(picomatch.toRegex(output));
+ * //=> /^(?:(?!\.)(?=.)[^/]*?\.js)$/
+ * ```
+ * @param {String} `source` Regular expression source string.
+ * @param {Object} `options`
+ * @return {RegExp}
+ * @api public
+ */
+
+picomatch.toRegex = (source, options) => {
+  try {
+    const opts = options || {};
+    return new RegExp(source, opts.flags || (opts.nocase ? 'i' : ''));
+  } catch (err) {
+    if (options && options.debug === true) throw err;
+    return /$^/;
+  }
+};
+
+/**
+ * Picomatch constants.
+ * @return {Object}
+ */
+
+picomatch.constants = constants;
+
+/**
+ * Expose "picomatch"
+ */
+
+module.exports = picomatch;
+
+
+/***/ }),
+
+/***/ 2429:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const utils = __nccwpck_require__(479);
+const {
+  CHAR_ASTERISK,             /* * */
+  CHAR_AT,                   /* @ */
+  CHAR_BACKWARD_SLASH,       /* \ */
+  CHAR_COMMA,                /* , */
+  CHAR_DOT,                  /* . */
+  CHAR_EXCLAMATION_MARK,     /* ! */
+  CHAR_FORWARD_SLASH,        /* / */
+  CHAR_LEFT_CURLY_BRACE,     /* { */
+  CHAR_LEFT_PARENTHESES,     /* ( */
+  CHAR_LEFT_SQUARE_BRACKET,  /* [ */
+  CHAR_PLUS,                 /* + */
+  CHAR_QUESTION_MARK,        /* ? */
+  CHAR_RIGHT_CURLY_BRACE,    /* } */
+  CHAR_RIGHT_PARENTHESES,    /* ) */
+  CHAR_RIGHT_SQUARE_BRACKET  /* ] */
+} = __nccwpck_require__(6099);
+
+const isPathSeparator = code => {
+  return code === CHAR_FORWARD_SLASH || code === CHAR_BACKWARD_SLASH;
+};
+
+const depth = token => {
+  if (token.isPrefix !== true) {
+    token.depth = token.isGlobstar ? Infinity : 1;
+  }
+};
+
+/**
+ * Quickly scans a glob pattern and returns an object with a handful of
+ * useful properties, like `isGlob`, `path` (the leading non-glob, if it exists),
+ * `glob` (the actual pattern), `negated` (true if the path starts with `!` but not
+ * with `!(`) and `negatedExtglob` (true if the path starts with `!(`).
+ *
+ * ```js
+ * const pm = require('picomatch');
+ * console.log(pm.scan('foo/bar/*.js'));
+ * { isGlob: true, input: 'foo/bar/*.js', base: 'foo/bar', glob: '*.js' }
+ * ```
+ * @param {String} `str`
+ * @param {Object} `options`
+ * @return {Object} Returns an object with tokens and regex source string.
+ * @api public
+ */
+
+const scan = (input, options) => {
+  const opts = options || {};
+
+  const length = input.length - 1;
+  const scanToEnd = opts.parts === true || opts.scanToEnd === true;
+  const slashes = [];
+  const tokens = [];
+  const parts = [];
+
+  let str = input;
+  let index = -1;
+  let start = 0;
+  let lastIndex = 0;
+  let isBrace = false;
+  let isBracket = false;
+  let isGlob = false;
+  let isExtglob = false;
+  let isGlobstar = false;
+  let braceEscaped = false;
+  let backslashes = false;
+  let negated = false;
+  let negatedExtglob = false;
+  let finished = false;
+  let braces = 0;
+  let prev;
+  let code;
+  let token = { value: '', depth: 0, isGlob: false };
+
+  const eos = () => index >= length;
+  const peek = () => str.charCodeAt(index + 1);
+  const advance = () => {
+    prev = code;
+    return str.charCodeAt(++index);
+  };
+
+  while (index < length) {
+    code = advance();
+    let next;
+
+    if (code === CHAR_BACKWARD_SLASH) {
+      backslashes = token.backslashes = true;
+      code = advance();
+
+      if (code === CHAR_LEFT_CURLY_BRACE) {
+        braceEscaped = true;
+      }
+      continue;
+    }
+
+    if (braceEscaped === true || code === CHAR_LEFT_CURLY_BRACE) {
+      braces++;
+
+      while (eos() !== true && (code = advance())) {
+        if (code === CHAR_BACKWARD_SLASH) {
+          backslashes = token.backslashes = true;
+          advance();
+          continue;
+        }
+
+        if (code === CHAR_LEFT_CURLY_BRACE) {
+          braces++;
+          continue;
+        }
+
+        if (braceEscaped !== true && code === CHAR_DOT && (code = advance()) === CHAR_DOT) {
+          isBrace = token.isBrace = true;
+          isGlob = token.isGlob = true;
+          finished = true;
+
+          if (scanToEnd === true) {
+            continue;
+          }
+
+          break;
+        }
+
+        if (braceEscaped !== true && code === CHAR_COMMA) {
+          isBrace = token.isBrace = true;
+          isGlob = token.isGlob = true;
+          finished = true;
+
+          if (scanToEnd === true) {
+            continue;
+          }
+
+          break;
+        }
+
+        if (code === CHAR_RIGHT_CURLY_BRACE) {
+          braces--;
+
+          if (braces === 0) {
+            braceEscaped = false;
+            isBrace = token.isBrace = true;
+            finished = true;
+            break;
+          }
+        }
+      }
+
+      if (scanToEnd === true) {
+        continue;
+      }
+
+      break;
+    }
+
+    if (code === CHAR_FORWARD_SLASH) {
+      slashes.push(index);
+      tokens.push(token);
+      token = { value: '', depth: 0, isGlob: false };
+
+      if (finished === true) continue;
+      if (prev === CHAR_DOT && index === (start + 1)) {
+        start += 2;
+        continue;
+      }
+
+      lastIndex = index + 1;
+      continue;
+    }
+
+    if (opts.noext !== true) {
+      const isExtglobChar = code === CHAR_PLUS
+        || code === CHAR_AT
+        || code === CHAR_ASTERISK
+        || code === CHAR_QUESTION_MARK
+        || code === CHAR_EXCLAMATION_MARK;
+
+      if (isExtglobChar === true && peek() === CHAR_LEFT_PARENTHESES) {
+        isGlob = token.isGlob = true;
+        isExtglob = token.isExtglob = true;
+        finished = true;
+        if (code === CHAR_EXCLAMATION_MARK && index === start) {
+          negatedExtglob = true;
+        }
+
+        if (scanToEnd === true) {
+          while (eos() !== true && (code = advance())) {
+            if (code === CHAR_BACKWARD_SLASH) {
+              backslashes = token.backslashes = true;
+              code = advance();
+              continue;
+            }
+
+            if (code === CHAR_RIGHT_PARENTHESES) {
+              isGlob = token.isGlob = true;
+              finished = true;
+              break;
+            }
+          }
+          continue;
+        }
+        break;
+      }
+    }
+
+    if (code === CHAR_ASTERISK) {
+      if (prev === CHAR_ASTERISK) isGlobstar = token.isGlobstar = true;
+      isGlob = token.isGlob = true;
+      finished = true;
+
+      if (scanToEnd === true) {
+        continue;
+      }
+      break;
+    }
+
+    if (code === CHAR_QUESTION_MARK) {
+      isGlob = token.isGlob = true;
+      finished = true;
+
+      if (scanToEnd === true) {
+        continue;
+      }
+      break;
+    }
+
+    if (code === CHAR_LEFT_SQUARE_BRACKET) {
+      while (eos() !== true && (next = advance())) {
+        if (next === CHAR_BACKWARD_SLASH) {
+          backslashes = token.backslashes = true;
+          advance();
+          continue;
+        }
+
+        if (next === CHAR_RIGHT_SQUARE_BRACKET) {
+          isBracket = token.isBracket = true;
+          isGlob = token.isGlob = true;
+          finished = true;
+          break;
+        }
+      }
+
+      if (scanToEnd === true) {
+        continue;
+      }
+
+      break;
+    }
+
+    if (opts.nonegate !== true && code === CHAR_EXCLAMATION_MARK && index === start) {
+      negated = token.negated = true;
+      start++;
+      continue;
+    }
+
+    if (opts.noparen !== true && code === CHAR_LEFT_PARENTHESES) {
+      isGlob = token.isGlob = true;
+
+      if (scanToEnd === true) {
+        while (eos() !== true && (code = advance())) {
+          if (code === CHAR_LEFT_PARENTHESES) {
+            backslashes = token.backslashes = true;
+            code = advance();
+            continue;
+          }
+
+          if (code === CHAR_RIGHT_PARENTHESES) {
+            finished = true;
+            break;
+          }
+        }
+        continue;
+      }
+      break;
+    }
+
+    if (isGlob === true) {
+      finished = true;
+
+      if (scanToEnd === true) {
+        continue;
+      }
+
+      break;
+    }
+  }
+
+  if (opts.noext === true) {
+    isExtglob = false;
+    isGlob = false;
+  }
+
+  let base = str;
+  let prefix = '';
+  let glob = '';
+
+  if (start > 0) {
+    prefix = str.slice(0, start);
+    str = str.slice(start);
+    lastIndex -= start;
+  }
+
+  if (base && isGlob === true && lastIndex > 0) {
+    base = str.slice(0, lastIndex);
+    glob = str.slice(lastIndex);
+  } else if (isGlob === true) {
+    base = '';
+    glob = str;
+  } else {
+    base = str;
+  }
+
+  if (base && base !== '' && base !== '/' && base !== str) {
+    if (isPathSeparator(base.charCodeAt(base.length - 1))) {
+      base = base.slice(0, -1);
+    }
+  }
+
+  if (opts.unescape === true) {
+    if (glob) glob = utils.removeBackslashes(glob);
+
+    if (base && backslashes === true) {
+      base = utils.removeBackslashes(base);
+    }
+  }
+
+  const state = {
+    prefix,
+    input,
+    start,
+    base,
+    glob,
+    isBrace,
+    isBracket,
+    isGlob,
+    isExtglob,
+    isGlobstar,
+    negated,
+    negatedExtglob
+  };
+
+  if (opts.tokens === true) {
+    state.maxDepth = 0;
+    if (!isPathSeparator(code)) {
+      tokens.push(token);
+    }
+    state.tokens = tokens;
+  }
+
+  if (opts.parts === true || opts.tokens === true) {
+    let prevIndex;
+
+    for (let idx = 0; idx < slashes.length; idx++) {
+      const n = prevIndex ? prevIndex + 1 : start;
+      const i = slashes[idx];
+      const value = input.slice(n, i);
+      if (opts.tokens) {
+        if (idx === 0 && start !== 0) {
+          tokens[idx].isPrefix = true;
+          tokens[idx].value = prefix;
+        } else {
+          tokens[idx].value = value;
+        }
+        depth(tokens[idx]);
+        state.maxDepth += tokens[idx].depth;
+      }
+      if (idx !== 0 || value !== '') {
+        parts.push(value);
+      }
+      prevIndex = i;
+    }
+
+    if (prevIndex && prevIndex + 1 < input.length) {
+      const value = input.slice(prevIndex + 1);
+      parts.push(value);
+
+      if (opts.tokens) {
+        tokens[tokens.length - 1].value = value;
+        depth(tokens[tokens.length - 1]);
+        state.maxDepth += tokens[tokens.length - 1].depth;
+      }
+    }
+
+    state.slashes = slashes;
+    state.parts = parts;
+  }
+
+  return state;
+};
+
+module.exports = scan;
+
+
+/***/ }),
+
+/***/ 479:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const path = __nccwpck_require__(1017);
+const win32 = process.platform === 'win32';
+const {
+  REGEX_BACKSLASH,
+  REGEX_REMOVE_BACKSLASH,
+  REGEX_SPECIAL_CHARS,
+  REGEX_SPECIAL_CHARS_GLOBAL
+} = __nccwpck_require__(6099);
+
+exports.isObject = val => val !== null && typeof val === 'object' && !Array.isArray(val);
+exports.hasRegexChars = str => REGEX_SPECIAL_CHARS.test(str);
+exports.isRegexChar = str => str.length === 1 && exports.hasRegexChars(str);
+exports.escapeRegex = str => str.replace(REGEX_SPECIAL_CHARS_GLOBAL, '\\$1');
+exports.toPosixSlashes = str => str.replace(REGEX_BACKSLASH, '/');
+
+exports.removeBackslashes = str => {
+  return str.replace(REGEX_REMOVE_BACKSLASH, match => {
+    return match === '\\' ? '' : match;
+  });
+};
+
+exports.supportsLookbehinds = () => {
+  const segs = process.version.slice(1).split('.').map(Number);
+  if (segs.length === 3 && segs[0] >= 9 || (segs[0] === 8 && segs[1] >= 10)) {
+    return true;
+  }
+  return false;
+};
+
+exports.isWindows = options => {
+  if (options && typeof options.windows === 'boolean') {
+    return options.windows;
+  }
+  return win32 === true || path.sep === '\\';
+};
+
+exports.escapeLast = (input, char, lastIdx) => {
+  const idx = input.lastIndexOf(char, lastIdx);
+  if (idx === -1) return input;
+  if (input[idx - 1] === '\\') return exports.escapeLast(input, char, idx - 1);
+  return `${input.slice(0, idx)}\\${input.slice(idx)}`;
+};
+
+exports.removePrefix = (input, state = {}) => {
+  let output = input;
+  if (output.startsWith('./')) {
+    output = output.slice(2);
+    state.prefix = './';
+  }
+  return output;
+};
+
+exports.wrapOutput = (input, state = {}, options = {}) => {
+  const prepend = options.contains ? '' : '^';
+  const append = options.contains ? '' : '$';
+
+  let output = `${prepend}(?:${input})${append}`;
+  if (state.negated === true) {
+    output = `(?:^(?!${output}).*$)`;
+  }
+  return output;
+};
 
 
 /***/ }),
@@ -15814,6 +25030,1608 @@ IllegalStateError.prototype.name = 'IllegalStateError';
 
 module.exports.IllegalStateError = IllegalStateError;
 module.exports.IllegalArgumentError = IllegalArgumentError;
+
+/***/ }),
+
+/***/ 5933:
+/***/ ((module) => {
+
+"use strict";
+
+function tryStringify (o) {
+  try { return JSON.stringify(o) } catch(e) { return '"[Circular]"' }
+}
+
+module.exports = format
+
+function format(f, args, opts) {
+  var ss = (opts && opts.stringify) || tryStringify
+  var offset = 1
+  if (typeof f === 'object' && f !== null) {
+    var len = args.length + offset
+    if (len === 1) return f
+    var objects = new Array(len)
+    objects[0] = ss(f)
+    for (var index = 1; index < len; index++) {
+      objects[index] = ss(args[index])
+    }
+    return objects.join(' ')
+  }
+  if (typeof f !== 'string') {
+    return f
+  }
+  var argLen = args.length
+  if (argLen === 0) return f
+  var str = ''
+  var a = 1 - offset
+  var lastPos = -1
+  var flen = (f && f.length) || 0
+  for (var i = 0; i < flen;) {
+    if (f.charCodeAt(i) === 37 && i + 1 < flen) {
+      lastPos = lastPos > -1 ? lastPos : 0
+      switch (f.charCodeAt(i + 1)) {
+        case 100: // 'd'
+        case 102: // 'f'
+          if (a >= argLen)
+            break
+          if (args[a] == null)  break
+          if (lastPos < i)
+            str += f.slice(lastPos, i)
+          str += Number(args[a])
+          lastPos = i + 2
+          i++
+          break
+        case 105: // 'i'
+          if (a >= argLen)
+            break
+          if (args[a] == null)  break
+          if (lastPos < i)
+            str += f.slice(lastPos, i)
+          str += Math.floor(Number(args[a]))
+          lastPos = i + 2
+          i++
+          break
+        case 79: // 'O'
+        case 111: // 'o'
+        case 106: // 'j'
+          if (a >= argLen)
+            break
+          if (args[a] === undefined) break
+          if (lastPos < i)
+            str += f.slice(lastPos, i)
+          var type = typeof args[a]
+          if (type === 'string') {
+            str += '\'' + args[a] + '\''
+            lastPos = i + 2
+            i++
+            break
+          }
+          if (type === 'function') {
+            str += args[a].name || '<anonymous>'
+            lastPos = i + 2
+            i++
+            break
+          }
+          str += ss(args[a])
+          lastPos = i + 2
+          i++
+          break
+        case 115: // 's'
+          if (a >= argLen)
+            break
+          if (lastPos < i)
+            str += f.slice(lastPos, i)
+          str += String(args[a])
+          lastPos = i + 2
+          i++
+          break
+        case 37: // '%'
+          if (lastPos < i)
+            str += f.slice(lastPos, i)
+          str += '%'
+          lastPos = i + 2
+          i++
+          a--
+          break
+      }
+      ++a
+    }
+    ++i
+  }
+  if (lastPos === -1)
+    return f
+  else if (lastPos < flen) {
+    str += f.slice(lastPos)
+  }
+
+  return str
+}
+
+
+/***/ }),
+
+/***/ 7560:
+/***/ ((module, exports) => {
+
+"use strict";
+
+
+const { hasOwnProperty } = Object.prototype
+
+const stringify = configure()
+
+// @ts-expect-error
+stringify.configure = configure
+// @ts-expect-error
+stringify.stringify = stringify
+
+// @ts-expect-error
+stringify.default = stringify
+
+// @ts-expect-error used for named export
+exports.stringify = stringify
+// @ts-expect-error used for named export
+exports.configure = configure
+
+module.exports = stringify
+
+// eslint-disable-next-line no-control-regex
+const strEscapeSequencesRegExp = /[\u0000-\u001f\u0022\u005c\ud800-\udfff]|[\ud800-\udbff](?![\udc00-\udfff])|(?:[^\ud800-\udbff]|^)[\udc00-\udfff]/
+const strEscapeSequencesReplacer = new RegExp(strEscapeSequencesRegExp, 'g')
+
+// Escaped special characters. Use empty strings to fill up unused entries.
+const meta = [
+  '\\u0000', '\\u0001', '\\u0002', '\\u0003', '\\u0004',
+  '\\u0005', '\\u0006', '\\u0007', '\\b', '\\t',
+  '\\n', '\\u000b', '\\f', '\\r', '\\u000e',
+  '\\u000f', '\\u0010', '\\u0011', '\\u0012', '\\u0013',
+  '\\u0014', '\\u0015', '\\u0016', '\\u0017', '\\u0018',
+  '\\u0019', '\\u001a', '\\u001b', '\\u001c', '\\u001d',
+  '\\u001e', '\\u001f', '', '', '\\"',
+  '', '', '', '', '', '', '', '', '', '',
+  '', '', '', '', '', '', '', '', '', '',
+  '', '', '', '', '', '', '', '', '', '',
+  '', '', '', '', '', '', '', '', '', '',
+  '', '', '', '', '', '', '', '', '', '',
+  '', '', '', '', '', '', '', '\\\\'
+]
+
+function escapeFn (str) {
+  if (str.length === 2) {
+    const charCode = str.charCodeAt(1)
+    return `${str[0]}\\u${charCode.toString(16)}`
+  }
+  const charCode = str.charCodeAt(0)
+  return meta.length > charCode
+    ? meta[charCode]
+    : `\\u${charCode.toString(16)}`
+}
+
+// Escape C0 control characters, double quotes, the backslash and every code
+// unit with a numeric value in the inclusive range 0xD800 to 0xDFFF.
+function strEscape (str) {
+  // Some magic numbers that worked out fine while benchmarking with v8 8.0
+  if (str.length < 5000 && !strEscapeSequencesRegExp.test(str)) {
+    return str
+  }
+  if (str.length > 100) {
+    return str.replace(strEscapeSequencesReplacer, escapeFn)
+  }
+  let result = ''
+  let last = 0
+  for (let i = 0; i < str.length; i++) {
+    const point = str.charCodeAt(i)
+    if (point === 34 || point === 92 || point < 32) {
+      result += `${str.slice(last, i)}${meta[point]}`
+      last = i + 1
+    } else if (point >= 0xd800 && point <= 0xdfff) {
+      if (point <= 0xdbff && i + 1 < str.length) {
+        const nextPoint = str.charCodeAt(i + 1)
+        if (nextPoint >= 0xdc00 && nextPoint <= 0xdfff) {
+          i++
+          continue
+        }
+      }
+      result += `${str.slice(last, i)}\\u${point.toString(16)}`
+      last = i + 1
+    }
+  }
+  result += str.slice(last)
+  return result
+}
+
+function insertSort (array) {
+  // Insertion sort is very efficient for small input sizes but it has a bad
+  // worst case complexity. Thus, use native array sort for bigger values.
+  if (array.length > 2e2) {
+    return array.sort()
+  }
+  for (let i = 1; i < array.length; i++) {
+    const currentValue = array[i]
+    let position = i
+    while (position !== 0 && array[position - 1] > currentValue) {
+      array[position] = array[position - 1]
+      position--
+    }
+    array[position] = currentValue
+  }
+  return array
+}
+
+const typedArrayPrototypeGetSymbolToStringTag =
+  Object.getOwnPropertyDescriptor(
+    Object.getPrototypeOf(
+      Object.getPrototypeOf(
+        new Int8Array()
+      )
+    ),
+    Symbol.toStringTag
+  ).get
+
+function isTypedArrayWithEntries (value) {
+  return typedArrayPrototypeGetSymbolToStringTag.call(value) !== undefined && value.length !== 0
+}
+
+function stringifyTypedArray (array, separator, maximumBreadth) {
+  if (array.length < maximumBreadth) {
+    maximumBreadth = array.length
+  }
+  const whitespace = separator === ',' ? '' : ' '
+  let res = `"0":${whitespace}${array[0]}`
+  for (let i = 1; i < maximumBreadth; i++) {
+    res += `${separator}"${i}":${whitespace}${array[i]}`
+  }
+  return res
+}
+
+function getCircularValueOption (options) {
+  if (hasOwnProperty.call(options, 'circularValue')) {
+    const circularValue = options.circularValue
+    if (typeof circularValue === 'string') {
+      return `"${circularValue}"`
+    }
+    if (circularValue == null) {
+      return circularValue
+    }
+    if (circularValue === Error || circularValue === TypeError) {
+      return {
+        toString () {
+          throw new TypeError('Converting circular structure to JSON')
+        }
+      }
+    }
+    throw new TypeError('The "circularValue" argument must be of type string or the value null or undefined')
+  }
+  return '"[Circular]"'
+}
+
+function getBooleanOption (options, key) {
+  let value
+  if (hasOwnProperty.call(options, key)) {
+    value = options[key]
+    if (typeof value !== 'boolean') {
+      throw new TypeError(`The "${key}" argument must be of type boolean`)
+    }
+  }
+  return value === undefined ? true : value
+}
+
+function getPositiveIntegerOption (options, key) {
+  let value
+  if (hasOwnProperty.call(options, key)) {
+    value = options[key]
+    if (typeof value !== 'number') {
+      throw new TypeError(`The "${key}" argument must be of type number`)
+    }
+    if (!Number.isInteger(value)) {
+      throw new TypeError(`The "${key}" argument must be an integer`)
+    }
+    if (value < 1) {
+      throw new RangeError(`The "${key}" argument must be >= 1`)
+    }
+  }
+  return value === undefined ? Infinity : value
+}
+
+function getItemCount (number) {
+  if (number === 1) {
+    return '1 item'
+  }
+  return `${number} items`
+}
+
+function getUniqueReplacerSet (replacerArray) {
+  const replacerSet = new Set()
+  for (const value of replacerArray) {
+    if (typeof value === 'string' || typeof value === 'number') {
+      replacerSet.add(String(value))
+    }
+  }
+  return replacerSet
+}
+
+function getStrictOption (options) {
+  if (hasOwnProperty.call(options, 'strict')) {
+    const value = options.strict
+    if (typeof value !== 'boolean') {
+      throw new TypeError('The "strict" argument must be of type boolean')
+    }
+    if (value) {
+      return (value) => {
+        let message = `Object can not safely be stringified. Received type ${typeof value}`
+        if (typeof value !== 'function') message += ` (${value.toString()})`
+        throw new Error(message)
+      }
+    }
+  }
+}
+
+function configure (options) {
+  options = { ...options }
+  const fail = getStrictOption(options)
+  if (fail) {
+    if (options.bigint === undefined) {
+      options.bigint = false
+    }
+    if (!('circularValue' in options)) {
+      options.circularValue = Error
+    }
+  }
+  const circularValue = getCircularValueOption(options)
+  const bigint = getBooleanOption(options, 'bigint')
+  const deterministic = getBooleanOption(options, 'deterministic')
+  const maximumDepth = getPositiveIntegerOption(options, 'maximumDepth')
+  const maximumBreadth = getPositiveIntegerOption(options, 'maximumBreadth')
+
+  function stringifyFnReplacer (key, parent, stack, replacer, spacer, indentation) {
+    let value = parent[key]
+
+    if (typeof value === 'object' && value !== null && typeof value.toJSON === 'function') {
+      value = value.toJSON(key)
+    }
+    value = replacer.call(parent, key, value)
+
+    switch (typeof value) {
+      case 'string':
+        return `"${strEscape(value)}"`
+      case 'object': {
+        if (value === null) {
+          return 'null'
+        }
+        if (stack.indexOf(value) !== -1) {
+          return circularValue
+        }
+
+        let res = ''
+        let join = ','
+        const originalIndentation = indentation
+
+        if (Array.isArray(value)) {
+          if (value.length === 0) {
+            return '[]'
+          }
+          if (maximumDepth < stack.length + 1) {
+            return '"[Array]"'
+          }
+          stack.push(value)
+          if (spacer !== '') {
+            indentation += spacer
+            res += `\n${indentation}`
+            join = `,\n${indentation}`
+          }
+          const maximumValuesToStringify = Math.min(value.length, maximumBreadth)
+          let i = 0
+          for (; i < maximumValuesToStringify - 1; i++) {
+            const tmp = stringifyFnReplacer(i, value, stack, replacer, spacer, indentation)
+            res += tmp !== undefined ? tmp : 'null'
+            res += join
+          }
+          const tmp = stringifyFnReplacer(i, value, stack, replacer, spacer, indentation)
+          res += tmp !== undefined ? tmp : 'null'
+          if (value.length - 1 > maximumBreadth) {
+            const removedKeys = value.length - maximumBreadth - 1
+            res += `${join}"... ${getItemCount(removedKeys)} not stringified"`
+          }
+          if (spacer !== '') {
+            res += `\n${originalIndentation}`
+          }
+          stack.pop()
+          return `[${res}]`
+        }
+
+        let keys = Object.keys(value)
+        const keyLength = keys.length
+        if (keyLength === 0) {
+          return '{}'
+        }
+        if (maximumDepth < stack.length + 1) {
+          return '"[Object]"'
+        }
+        let whitespace = ''
+        let separator = ''
+        if (spacer !== '') {
+          indentation += spacer
+          join = `,\n${indentation}`
+          whitespace = ' '
+        }
+        let maximumPropertiesToStringify = Math.min(keyLength, maximumBreadth)
+        if (isTypedArrayWithEntries(value)) {
+          res += stringifyTypedArray(value, join, maximumBreadth)
+          keys = keys.slice(value.length)
+          maximumPropertiesToStringify -= value.length
+          separator = join
+        }
+        if (deterministic) {
+          keys = insertSort(keys)
+        }
+        stack.push(value)
+        for (let i = 0; i < maximumPropertiesToStringify; i++) {
+          const key = keys[i]
+          const tmp = stringifyFnReplacer(key, value, stack, replacer, spacer, indentation)
+          if (tmp !== undefined) {
+            res += `${separator}"${strEscape(key)}":${whitespace}${tmp}`
+            separator = join
+          }
+        }
+        if (keyLength > maximumBreadth) {
+          const removedKeys = keyLength - maximumBreadth
+          res += `${separator}"...":${whitespace}"${getItemCount(removedKeys)} not stringified"`
+          separator = join
+        }
+        if (spacer !== '' && separator.length > 1) {
+          res = `\n${indentation}${res}\n${originalIndentation}`
+        }
+        stack.pop()
+        return `{${res}}`
+      }
+      case 'number':
+        return isFinite(value) ? String(value) : fail ? fail(value) : 'null'
+      case 'boolean':
+        return value === true ? 'true' : 'false'
+      case 'undefined':
+        return undefined
+      case 'bigint':
+        if (bigint) {
+          return String(value)
+        }
+        // fallthrough
+      default:
+        return fail ? fail(value) : undefined
+    }
+  }
+
+  function stringifyArrayReplacer (key, value, stack, replacer, spacer, indentation) {
+    if (typeof value === 'object' && value !== null && typeof value.toJSON === 'function') {
+      value = value.toJSON(key)
+    }
+
+    switch (typeof value) {
+      case 'string':
+        return `"${strEscape(value)}"`
+      case 'object': {
+        if (value === null) {
+          return 'null'
+        }
+        if (stack.indexOf(value) !== -1) {
+          return circularValue
+        }
+
+        const originalIndentation = indentation
+        let res = ''
+        let join = ','
+
+        if (Array.isArray(value)) {
+          if (value.length === 0) {
+            return '[]'
+          }
+          if (maximumDepth < stack.length + 1) {
+            return '"[Array]"'
+          }
+          stack.push(value)
+          if (spacer !== '') {
+            indentation += spacer
+            res += `\n${indentation}`
+            join = `,\n${indentation}`
+          }
+          const maximumValuesToStringify = Math.min(value.length, maximumBreadth)
+          let i = 0
+          for (; i < maximumValuesToStringify - 1; i++) {
+            const tmp = stringifyArrayReplacer(i, value[i], stack, replacer, spacer, indentation)
+            res += tmp !== undefined ? tmp : 'null'
+            res += join
+          }
+          const tmp = stringifyArrayReplacer(i, value[i], stack, replacer, spacer, indentation)
+          res += tmp !== undefined ? tmp : 'null'
+          if (value.length - 1 > maximumBreadth) {
+            const removedKeys = value.length - maximumBreadth - 1
+            res += `${join}"... ${getItemCount(removedKeys)} not stringified"`
+          }
+          if (spacer !== '') {
+            res += `\n${originalIndentation}`
+          }
+          stack.pop()
+          return `[${res}]`
+        }
+        if (replacer.size === 0) {
+          return '{}'
+        }
+        stack.push(value)
+        let whitespace = ''
+        if (spacer !== '') {
+          indentation += spacer
+          join = `,\n${indentation}`
+          whitespace = ' '
+        }
+        let separator = ''
+        for (const key of replacer) {
+          const tmp = stringifyArrayReplacer(key, value[key], stack, replacer, spacer, indentation)
+          if (tmp !== undefined) {
+            res += `${separator}"${strEscape(key)}":${whitespace}${tmp}`
+            separator = join
+          }
+        }
+        if (spacer !== '' && separator.length > 1) {
+          res = `\n${indentation}${res}\n${originalIndentation}`
+        }
+        stack.pop()
+        return `{${res}}`
+      }
+      case 'number':
+        return isFinite(value) ? String(value) : fail ? fail(value) : 'null'
+      case 'boolean':
+        return value === true ? 'true' : 'false'
+      case 'undefined':
+        return undefined
+      case 'bigint':
+        if (bigint) {
+          return String(value)
+        }
+        // fallthrough
+      default:
+        return fail ? fail(value) : undefined
+    }
+  }
+
+  function stringifyIndent (key, value, stack, spacer, indentation) {
+    switch (typeof value) {
+      case 'string':
+        return `"${strEscape(value)}"`
+      case 'object': {
+        if (value === null) {
+          return 'null'
+        }
+        if (typeof value.toJSON === 'function') {
+          value = value.toJSON(key)
+          // Prevent calling `toJSON` again.
+          if (typeof value !== 'object') {
+            return stringifyIndent(key, value, stack, spacer, indentation)
+          }
+          if (value === null) {
+            return 'null'
+          }
+        }
+        if (stack.indexOf(value) !== -1) {
+          return circularValue
+        }
+        const originalIndentation = indentation
+
+        if (Array.isArray(value)) {
+          if (value.length === 0) {
+            return '[]'
+          }
+          if (maximumDepth < stack.length + 1) {
+            return '"[Array]"'
+          }
+          stack.push(value)
+          indentation += spacer
+          let res = `\n${indentation}`
+          const join = `,\n${indentation}`
+          const maximumValuesToStringify = Math.min(value.length, maximumBreadth)
+          let i = 0
+          for (; i < maximumValuesToStringify - 1; i++) {
+            const tmp = stringifyIndent(i, value[i], stack, spacer, indentation)
+            res += tmp !== undefined ? tmp : 'null'
+            res += join
+          }
+          const tmp = stringifyIndent(i, value[i], stack, spacer, indentation)
+          res += tmp !== undefined ? tmp : 'null'
+          if (value.length - 1 > maximumBreadth) {
+            const removedKeys = value.length - maximumBreadth - 1
+            res += `${join}"... ${getItemCount(removedKeys)} not stringified"`
+          }
+          res += `\n${originalIndentation}`
+          stack.pop()
+          return `[${res}]`
+        }
+
+        let keys = Object.keys(value)
+        const keyLength = keys.length
+        if (keyLength === 0) {
+          return '{}'
+        }
+        if (maximumDepth < stack.length + 1) {
+          return '"[Object]"'
+        }
+        indentation += spacer
+        const join = `,\n${indentation}`
+        let res = ''
+        let separator = ''
+        let maximumPropertiesToStringify = Math.min(keyLength, maximumBreadth)
+        if (isTypedArrayWithEntries(value)) {
+          res += stringifyTypedArray(value, join, maximumBreadth)
+          keys = keys.slice(value.length)
+          maximumPropertiesToStringify -= value.length
+          separator = join
+        }
+        if (deterministic) {
+          keys = insertSort(keys)
+        }
+        stack.push(value)
+        for (let i = 0; i < maximumPropertiesToStringify; i++) {
+          const key = keys[i]
+          const tmp = stringifyIndent(key, value[key], stack, spacer, indentation)
+          if (tmp !== undefined) {
+            res += `${separator}"${strEscape(key)}": ${tmp}`
+            separator = join
+          }
+        }
+        if (keyLength > maximumBreadth) {
+          const removedKeys = keyLength - maximumBreadth
+          res += `${separator}"...": "${getItemCount(removedKeys)} not stringified"`
+          separator = join
+        }
+        if (separator !== '') {
+          res = `\n${indentation}${res}\n${originalIndentation}`
+        }
+        stack.pop()
+        return `{${res}}`
+      }
+      case 'number':
+        return isFinite(value) ? String(value) : fail ? fail(value) : 'null'
+      case 'boolean':
+        return value === true ? 'true' : 'false'
+      case 'undefined':
+        return undefined
+      case 'bigint':
+        if (bigint) {
+          return String(value)
+        }
+        // fallthrough
+      default:
+        return fail ? fail(value) : undefined
+    }
+  }
+
+  function stringifySimple (key, value, stack) {
+    switch (typeof value) {
+      case 'string':
+        return `"${strEscape(value)}"`
+      case 'object': {
+        if (value === null) {
+          return 'null'
+        }
+        if (typeof value.toJSON === 'function') {
+          value = value.toJSON(key)
+          // Prevent calling `toJSON` again
+          if (typeof value !== 'object') {
+            return stringifySimple(key, value, stack)
+          }
+          if (value === null) {
+            return 'null'
+          }
+        }
+        if (stack.indexOf(value) !== -1) {
+          return circularValue
+        }
+
+        let res = ''
+
+        if (Array.isArray(value)) {
+          if (value.length === 0) {
+            return '[]'
+          }
+          if (maximumDepth < stack.length + 1) {
+            return '"[Array]"'
+          }
+          stack.push(value)
+          const maximumValuesToStringify = Math.min(value.length, maximumBreadth)
+          let i = 0
+          for (; i < maximumValuesToStringify - 1; i++) {
+            const tmp = stringifySimple(i, value[i], stack)
+            res += tmp !== undefined ? tmp : 'null'
+            res += ','
+          }
+          const tmp = stringifySimple(i, value[i], stack)
+          res += tmp !== undefined ? tmp : 'null'
+          if (value.length - 1 > maximumBreadth) {
+            const removedKeys = value.length - maximumBreadth - 1
+            res += `,"... ${getItemCount(removedKeys)} not stringified"`
+          }
+          stack.pop()
+          return `[${res}]`
+        }
+
+        let keys = Object.keys(value)
+        const keyLength = keys.length
+        if (keyLength === 0) {
+          return '{}'
+        }
+        if (maximumDepth < stack.length + 1) {
+          return '"[Object]"'
+        }
+        let separator = ''
+        let maximumPropertiesToStringify = Math.min(keyLength, maximumBreadth)
+        if (isTypedArrayWithEntries(value)) {
+          res += stringifyTypedArray(value, ',', maximumBreadth)
+          keys = keys.slice(value.length)
+          maximumPropertiesToStringify -= value.length
+          separator = ','
+        }
+        if (deterministic) {
+          keys = insertSort(keys)
+        }
+        stack.push(value)
+        for (let i = 0; i < maximumPropertiesToStringify; i++) {
+          const key = keys[i]
+          const tmp = stringifySimple(key, value[key], stack)
+          if (tmp !== undefined) {
+            res += `${separator}"${strEscape(key)}":${tmp}`
+            separator = ','
+          }
+        }
+        if (keyLength > maximumBreadth) {
+          const removedKeys = keyLength - maximumBreadth
+          res += `${separator}"...":"${getItemCount(removedKeys)} not stringified"`
+        }
+        stack.pop()
+        return `{${res}}`
+      }
+      case 'number':
+        return isFinite(value) ? String(value) : fail ? fail(value) : 'null'
+      case 'boolean':
+        return value === true ? 'true' : 'false'
+      case 'undefined':
+        return undefined
+      case 'bigint':
+        if (bigint) {
+          return String(value)
+        }
+        // fallthrough
+      default:
+        return fail ? fail(value) : undefined
+    }
+  }
+
+  function stringify (value, replacer, space) {
+    if (arguments.length > 1) {
+      let spacer = ''
+      if (typeof space === 'number') {
+        spacer = ' '.repeat(Math.min(space, 10))
+      } else if (typeof space === 'string') {
+        spacer = space.slice(0, 10)
+      }
+      if (replacer != null) {
+        if (typeof replacer === 'function') {
+          return stringifyFnReplacer('', { '': value }, [], replacer, spacer, '')
+        }
+        if (Array.isArray(replacer)) {
+          return stringifyArrayReplacer('', value, [], getUniqueReplacerSet(replacer), spacer, '')
+        }
+      }
+      if (spacer.length !== 0) {
+        return stringifyIndent('', value, [], spacer, '')
+      }
+    }
+    return stringifySimple('', value, [])
+  }
+
+  return stringify
+}
+
+
+/***/ }),
+
+/***/ 9229:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.sentenceCase = exports.sentenceCaseTransform = void 0;
+var tslib_1 = __nccwpck_require__(4351);
+var no_case_1 = __nccwpck_require__(397);
+var upper_case_first_1 = __nccwpck_require__(6256);
+function sentenceCaseTransform(input, index) {
+    var result = input.toLowerCase();
+    if (index === 0)
+        return upper_case_first_1.upperCaseFirst(result);
+    return result;
+}
+exports.sentenceCaseTransform = sentenceCaseTransform;
+function sentenceCase(input, options) {
+    if (options === void 0) { options = {}; }
+    return no_case_1.noCase(input, tslib_1.__assign({ delimiter: " ", transform: sentenceCaseTransform }, options));
+}
+exports.sentenceCase = sentenceCase;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 6213:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.snakeCase = void 0;
+var tslib_1 = __nccwpck_require__(4351);
+var dot_case_1 = __nccwpck_require__(2246);
+function snakeCase(input, options) {
+    if (options === void 0) { options = {}; }
+    return dot_case_1.dotCase(input, tslib_1.__assign({ delimiter: "_" }, options));
+}
+exports.snakeCase = snakeCase;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 9318:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+const os = __nccwpck_require__(2037);
+const hasFlag = __nccwpck_require__(1621);
+
+const env = process.env;
+
+let forceColor;
+if (hasFlag('no-color') ||
+	hasFlag('no-colors') ||
+	hasFlag('color=false')) {
+	forceColor = false;
+} else if (hasFlag('color') ||
+	hasFlag('colors') ||
+	hasFlag('color=true') ||
+	hasFlag('color=always')) {
+	forceColor = true;
+}
+if ('FORCE_COLOR' in env) {
+	forceColor = env.FORCE_COLOR.length === 0 || parseInt(env.FORCE_COLOR, 10) !== 0;
+}
+
+function translateLevel(level) {
+	if (level === 0) {
+		return false;
+	}
+
+	return {
+		level,
+		hasBasic: true,
+		has256: level >= 2,
+		has16m: level >= 3
+	};
+}
+
+function supportsColor(stream) {
+	if (forceColor === false) {
+		return 0;
+	}
+
+	if (hasFlag('color=16m') ||
+		hasFlag('color=full') ||
+		hasFlag('color=truecolor')) {
+		return 3;
+	}
+
+	if (hasFlag('color=256')) {
+		return 2;
+	}
+
+	if (stream && !stream.isTTY && forceColor !== true) {
+		return 0;
+	}
+
+	const min = forceColor ? 1 : 0;
+
+	if (process.platform === 'win32') {
+		// Node.js 7.5.0 is the first version of Node.js to include a patch to
+		// libuv that enables 256 color output on Windows. Anything earlier and it
+		// won't work. However, here we target Node.js 8 at minimum as it is an LTS
+		// release, and Node.js 7 is not. Windows 10 build 10586 is the first Windows
+		// release that supports 256 colors. Windows 10 build 14931 is the first release
+		// that supports 16m/TrueColor.
+		const osRelease = os.release().split('.');
+		if (
+			Number(process.versions.node.split('.')[0]) >= 8 &&
+			Number(osRelease[0]) >= 10 &&
+			Number(osRelease[2]) >= 10586
+		) {
+			return Number(osRelease[2]) >= 14931 ? 3 : 2;
+		}
+
+		return 1;
+	}
+
+	if ('CI' in env) {
+		if (['TRAVIS', 'CIRCLECI', 'APPVEYOR', 'GITLAB_CI'].some(sign => sign in env) || env.CI_NAME === 'codeship') {
+			return 1;
+		}
+
+		return min;
+	}
+
+	if ('TEAMCITY_VERSION' in env) {
+		return /^(9\.(0*[1-9]\d*)\.|\d{2,}\.)/.test(env.TEAMCITY_VERSION) ? 1 : 0;
+	}
+
+	if (env.COLORTERM === 'truecolor') {
+		return 3;
+	}
+
+	if ('TERM_PROGRAM' in env) {
+		const version = parseInt((env.TERM_PROGRAM_VERSION || '').split('.')[0], 10);
+
+		switch (env.TERM_PROGRAM) {
+			case 'iTerm.app':
+				return version >= 3 ? 3 : 2;
+			case 'Apple_Terminal':
+				return 2;
+			// No default
+		}
+	}
+
+	if (/-256(color)?$/i.test(env.TERM)) {
+		return 2;
+	}
+
+	if (/^screen|^xterm|^vt100|^vt220|^rxvt|color|ansi|cygwin|linux/i.test(env.TERM)) {
+		return 1;
+	}
+
+	if ('COLORTERM' in env) {
+		return 1;
+	}
+
+	if (env.TERM === 'dumb') {
+		return min;
+	}
+
+	return min;
+}
+
+function getSupportLevel(stream) {
+	const level = supportsColor(stream);
+	return translateLevel(level);
+}
+
+module.exports = {
+	supportsColor: getSupportLevel,
+	stdout: getSupportLevel(process.stdout),
+	stderr: getSupportLevel(process.stderr)
+};
+
+
+/***/ }),
+
+/***/ 8366:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const { version } = __nccwpck_require__(2954)
+const { EventEmitter } = __nccwpck_require__(2361)
+const { Worker } = __nccwpck_require__(1267)
+const { join } = __nccwpck_require__(1017)
+const { pathToFileURL } = __nccwpck_require__(7310)
+const { wait } = __nccwpck_require__(3916)
+const {
+  WRITE_INDEX,
+  READ_INDEX
+} = __nccwpck_require__(4212)
+const buffer = __nccwpck_require__(4300)
+const assert = __nccwpck_require__(9491)
+
+const kImpl = Symbol('kImpl')
+
+// V8 limit for string size
+const MAX_STRING = buffer.constants.MAX_STRING_LENGTH
+
+class FakeWeakRef {
+  constructor (value) {
+    this._value = value
+  }
+
+  deref () {
+    return this._value
+  }
+}
+
+const FinalizationRegistry = global.FinalizationRegistry || class FakeFinalizationRegistry {
+  register () {}
+
+  unregister () {}
+}
+
+const WeakRef = global.WeakRef || FakeWeakRef
+
+const registry = new FinalizationRegistry((worker) => {
+  if (worker.exited) {
+    return
+  }
+  worker.terminate()
+})
+
+function createWorker (stream, opts) {
+  const { filename, workerData } = opts
+
+  const bundlerOverrides = '__bundlerPathsOverrides' in globalThis ? globalThis.__bundlerPathsOverrides : {}
+  const toExecute = bundlerOverrides['thread-stream-worker'] || __nccwpck_require__.ab + "worker1.js"
+
+  const worker = new Worker(toExecute, {
+    ...opts.workerOpts,
+    workerData: {
+      filename: filename.indexOf('file://') === 0
+        ? filename
+        : pathToFileURL(filename).href,
+      dataBuf: stream[kImpl].dataBuf,
+      stateBuf: stream[kImpl].stateBuf,
+      workerData: {
+        $context: {
+          threadStreamVersion: version
+        },
+        ...workerData
+      }
+    }
+  })
+
+  // We keep a strong reference for now,
+  // we need to start writing first
+  worker.stream = new FakeWeakRef(stream)
+
+  worker.on('message', onWorkerMessage)
+  worker.on('exit', onWorkerExit)
+  registry.register(stream, worker)
+
+  return worker
+}
+
+function drain (stream) {
+  assert(!stream[kImpl].sync)
+  if (stream[kImpl].needDrain) {
+    stream[kImpl].needDrain = false
+    stream.emit('drain')
+  }
+}
+
+function nextFlush (stream) {
+  const writeIndex = Atomics.load(stream[kImpl].state, WRITE_INDEX)
+  let leftover = stream[kImpl].data.length - writeIndex
+
+  if (leftover > 0) {
+    if (stream[kImpl].buf.length === 0) {
+      stream[kImpl].flushing = false
+
+      if (stream[kImpl].ending) {
+        end(stream)
+      } else if (stream[kImpl].needDrain) {
+        process.nextTick(drain, stream)
+      }
+
+      return
+    }
+
+    let toWrite = stream[kImpl].buf.slice(0, leftover)
+    let toWriteBytes = Buffer.byteLength(toWrite)
+    if (toWriteBytes <= leftover) {
+      stream[kImpl].buf = stream[kImpl].buf.slice(leftover)
+      // process._rawDebug('writing ' + toWrite.length)
+      write(stream, toWrite, nextFlush.bind(null, stream))
+    } else {
+      // multi-byte utf-8
+      stream.flush(() => {
+        // err is already handled in flush()
+        if (stream.destroyed) {
+          return
+        }
+
+        Atomics.store(stream[kImpl].state, READ_INDEX, 0)
+        Atomics.store(stream[kImpl].state, WRITE_INDEX, 0)
+
+        // Find a toWrite length that fits the buffer
+        // it must exists as the buffer is at least 4 bytes length
+        // and the max utf-8 length for a char is 4 bytes.
+        while (toWriteBytes > stream[kImpl].data.length) {
+          leftover = leftover / 2
+          toWrite = stream[kImpl].buf.slice(0, leftover)
+          toWriteBytes = Buffer.byteLength(toWrite)
+        }
+        stream[kImpl].buf = stream[kImpl].buf.slice(leftover)
+        write(stream, toWrite, nextFlush.bind(null, stream))
+      })
+    }
+  } else if (leftover === 0) {
+    if (writeIndex === 0 && stream[kImpl].buf.length === 0) {
+      // we had a flushSync in the meanwhile
+      return
+    }
+    stream.flush(() => {
+      Atomics.store(stream[kImpl].state, READ_INDEX, 0)
+      Atomics.store(stream[kImpl].state, WRITE_INDEX, 0)
+      nextFlush(stream)
+    })
+  } else {
+    // This should never happen
+    destroy(stream, new Error('overwritten'))
+  }
+}
+
+function onWorkerMessage (msg) {
+  const stream = this.stream.deref()
+  if (stream === undefined) {
+    this.exited = true
+    // Terminate the worker.
+    this.terminate()
+    return
+  }
+
+  switch (msg.code) {
+    case 'READY':
+      // Replace the FakeWeakRef with a
+      // proper one.
+      this.stream = new WeakRef(stream)
+
+      stream.flush(() => {
+        stream[kImpl].ready = true
+        stream.emit('ready')
+      })
+      break
+    case 'ERROR':
+      destroy(stream, msg.err)
+      break
+    case 'EVENT':
+      if (Array.isArray(msg.args)) {
+        stream.emit(msg.name, ...msg.args)
+      } else {
+        stream.emit(msg.name, msg.args)
+      }
+      break
+    default:
+      destroy(stream, new Error('this should not happen: ' + msg.code))
+  }
+}
+
+function onWorkerExit (code) {
+  const stream = this.stream.deref()
+  if (stream === undefined) {
+    // Nothing to do, the worker already exit
+    return
+  }
+  registry.unregister(stream)
+  stream.worker.exited = true
+  stream.worker.off('exit', onWorkerExit)
+  destroy(stream, code !== 0 ? new Error('the worker thread exited') : null)
+}
+
+class ThreadStream extends EventEmitter {
+  constructor (opts = {}) {
+    super()
+
+    if (opts.bufferSize < 4) {
+      throw new Error('bufferSize must at least fit a 4-byte utf-8 char')
+    }
+
+    this[kImpl] = {}
+    this[kImpl].stateBuf = new SharedArrayBuffer(128)
+    this[kImpl].state = new Int32Array(this[kImpl].stateBuf)
+    this[kImpl].dataBuf = new SharedArrayBuffer(opts.bufferSize || 4 * 1024 * 1024)
+    this[kImpl].data = Buffer.from(this[kImpl].dataBuf)
+    this[kImpl].sync = opts.sync || false
+    this[kImpl].ending = false
+    this[kImpl].ended = false
+    this[kImpl].needDrain = false
+    this[kImpl].destroyed = false
+    this[kImpl].flushing = false
+    this[kImpl].ready = false
+    this[kImpl].finished = false
+    this[kImpl].errored = null
+    this[kImpl].closed = false
+    this[kImpl].buf = ''
+
+    // TODO (fix): Make private?
+    this.worker = createWorker(this, opts) // TODO (fix): make private
+  }
+
+  write (data) {
+    if (this[kImpl].destroyed) {
+      error(this, new Error('the worker has exited'))
+      return false
+    }
+
+    if (this[kImpl].ending) {
+      error(this, new Error('the worker is ending'))
+      return false
+    }
+
+    if (this[kImpl].flushing && this[kImpl].buf.length + data.length >= MAX_STRING) {
+      try {
+        writeSync(this)
+        this[kImpl].flushing = true
+      } catch (err) {
+        destroy(this, err)
+        return false
+      }
+    }
+
+    this[kImpl].buf += data
+
+    if (this[kImpl].sync) {
+      try {
+        writeSync(this)
+        return true
+      } catch (err) {
+        destroy(this, err)
+        return false
+      }
+    }
+
+    if (!this[kImpl].flushing) {
+      this[kImpl].flushing = true
+      setImmediate(nextFlush, this)
+    }
+
+    this[kImpl].needDrain = this[kImpl].data.length - this[kImpl].buf.length - Atomics.load(this[kImpl].state, WRITE_INDEX) <= 0
+    return !this[kImpl].needDrain
+  }
+
+  end () {
+    if (this[kImpl].destroyed) {
+      return
+    }
+
+    this[kImpl].ending = true
+    end(this)
+  }
+
+  flush (cb) {
+    if (this[kImpl].destroyed) {
+      if (typeof cb === 'function') {
+        process.nextTick(cb, new Error('the worker has exited'))
+      }
+      return
+    }
+
+    // TODO write all .buf
+    const writeIndex = Atomics.load(this[kImpl].state, WRITE_INDEX)
+    // process._rawDebug(`(flush) readIndex (${Atomics.load(this.state, READ_INDEX)}) writeIndex (${Atomics.load(this.state, WRITE_INDEX)})`)
+    wait(this[kImpl].state, READ_INDEX, writeIndex, Infinity, (err, res) => {
+      if (err) {
+        destroy(this, err)
+        process.nextTick(cb, err)
+        return
+      }
+      if (res === 'not-equal') {
+        // TODO handle deadlock
+        this.flush(cb)
+        return
+      }
+      process.nextTick(cb)
+    })
+  }
+
+  flushSync () {
+    if (this[kImpl].destroyed) {
+      return
+    }
+
+    writeSync(this)
+    flushSync(this)
+  }
+
+  unref () {
+    this.worker.unref()
+  }
+
+  ref () {
+    this.worker.ref()
+  }
+
+  get ready () {
+    return this[kImpl].ready
+  }
+
+  get destroyed () {
+    return this[kImpl].destroyed
+  }
+
+  get closed () {
+    return this[kImpl].closed
+  }
+
+  get writable () {
+    return !this[kImpl].destroyed && !this[kImpl].ending
+  }
+
+  get writableEnded () {
+    return this[kImpl].ending
+  }
+
+  get writableFinished () {
+    return this[kImpl].finished
+  }
+
+  get writableNeedDrain () {
+    return this[kImpl].needDrain
+  }
+
+  get writableObjectMode () {
+    return false
+  }
+
+  get writableErrored () {
+    return this[kImpl].errored
+  }
+}
+
+function error (stream, err) {
+  setImmediate(() => {
+    stream.emit('error', err)
+  })
+}
+
+function destroy (stream, err) {
+  if (stream[kImpl].destroyed) {
+    return
+  }
+  stream[kImpl].destroyed = true
+
+  if (err) {
+    stream[kImpl].errored = err
+    error(stream, err)
+  }
+
+  if (!stream.worker.exited) {
+    stream.worker.terminate()
+      .catch(() => {})
+      .then(() => {
+        stream[kImpl].closed = true
+        stream.emit('close')
+      })
+  } else {
+    setImmediate(() => {
+      stream[kImpl].closed = true
+      stream.emit('close')
+    })
+  }
+}
+
+function write (stream, data, cb) {
+  // data is smaller than the shared buffer length
+  const current = Atomics.load(stream[kImpl].state, WRITE_INDEX)
+  const length = Buffer.byteLength(data)
+  stream[kImpl].data.write(data, current)
+  Atomics.store(stream[kImpl].state, WRITE_INDEX, current + length)
+  Atomics.notify(stream[kImpl].state, WRITE_INDEX)
+  cb()
+  return true
+}
+
+function end (stream) {
+  if (stream[kImpl].ended || !stream[kImpl].ending || stream[kImpl].flushing) {
+    return
+  }
+  stream[kImpl].ended = true
+
+  try {
+    stream.flushSync()
+
+    let readIndex = Atomics.load(stream[kImpl].state, READ_INDEX)
+
+    // process._rawDebug('writing index')
+    Atomics.store(stream[kImpl].state, WRITE_INDEX, -1)
+    // process._rawDebug(`(end) readIndex (${Atomics.load(stream.state, READ_INDEX)}) writeIndex (${Atomics.load(stream.state, WRITE_INDEX)})`)
+    Atomics.notify(stream[kImpl].state, WRITE_INDEX)
+
+    // Wait for the process to complete
+    let spins = 0
+    while (readIndex !== -1) {
+      // process._rawDebug(`read = ${read}`)
+      Atomics.wait(stream[kImpl].state, READ_INDEX, readIndex, 1000)
+      readIndex = Atomics.load(stream[kImpl].state, READ_INDEX)
+
+      if (readIndex === -2) {
+        destroy(stream, new Error('end() failed'))
+        return
+      }
+
+      if (++spins === 10) {
+        destroy(stream, new Error('end() took too long (10s)'))
+        return
+      }
+    }
+
+    process.nextTick(() => {
+      stream[kImpl].finished = true
+      stream.emit('finish')
+    })
+  } catch (err) {
+    destroy(stream, err)
+  }
+  // process._rawDebug('end finished...')
+}
+
+function writeSync (stream) {
+  const cb = () => {
+    if (stream[kImpl].ending) {
+      end(stream)
+    } else if (stream[kImpl].needDrain) {
+      process.nextTick(drain, stream)
+    }
+  }
+  stream[kImpl].flushing = false
+
+  while (stream[kImpl].buf.length !== 0) {
+    const writeIndex = Atomics.load(stream[kImpl].state, WRITE_INDEX)
+    let leftover = stream[kImpl].data.length - writeIndex
+    if (leftover === 0) {
+      flushSync(stream)
+      Atomics.store(stream[kImpl].state, READ_INDEX, 0)
+      Atomics.store(stream[kImpl].state, WRITE_INDEX, 0)
+      continue
+    } else if (leftover < 0) {
+      // stream should never happen
+      throw new Error('overwritten')
+    }
+
+    let toWrite = stream[kImpl].buf.slice(0, leftover)
+    let toWriteBytes = Buffer.byteLength(toWrite)
+    if (toWriteBytes <= leftover) {
+      stream[kImpl].buf = stream[kImpl].buf.slice(leftover)
+      // process._rawDebug('writing ' + toWrite.length)
+      write(stream, toWrite, cb)
+    } else {
+      // multi-byte utf-8
+      flushSync(stream)
+      Atomics.store(stream[kImpl].state, READ_INDEX, 0)
+      Atomics.store(stream[kImpl].state, WRITE_INDEX, 0)
+
+      // Find a toWrite length that fits the buffer
+      // it must exists as the buffer is at least 4 bytes length
+      // and the max utf-8 length for a char is 4 bytes.
+      while (toWriteBytes > stream[kImpl].buf.length) {
+        leftover = leftover / 2
+        toWrite = stream[kImpl].buf.slice(0, leftover)
+        toWriteBytes = Buffer.byteLength(toWrite)
+      }
+      stream[kImpl].buf = stream[kImpl].buf.slice(leftover)
+      write(stream, toWrite, cb)
+    }
+  }
+}
+
+function flushSync (stream) {
+  if (stream[kImpl].flushing) {
+    throw new Error('unable to flush while flushing')
+  }
+
+  // process._rawDebug('flushSync started')
+
+  const writeIndex = Atomics.load(stream[kImpl].state, WRITE_INDEX)
+
+  let spins = 0
+
+  // TODO handle deadlock
+  while (true) {
+    const readIndex = Atomics.load(stream[kImpl].state, READ_INDEX)
+
+    if (readIndex === -2) {
+      throw Error('_flushSync failed')
+    }
+
+    // process._rawDebug(`(flushSync) readIndex (${readIndex}) writeIndex (${writeIndex})`)
+    if (readIndex !== writeIndex) {
+      // TODO stream timeouts for some reason.
+      Atomics.wait(stream[kImpl].state, READ_INDEX, readIndex, 1000)
+    } else {
+      break
+    }
+
+    if (++spins === 10) {
+      throw new Error('_flushSync took too long (10s)')
+    }
+  }
+  // process._rawDebug('flushSync finished')
+}
+
+module.exports = ThreadStream
+
+
+/***/ }),
+
+/***/ 4212:
+/***/ ((module) => {
+
+"use strict";
+
+
+const WRITE_INDEX = 4
+const READ_INDEX = 8
+
+module.exports = {
+  WRITE_INDEX,
+  READ_INDEX
+}
+
+
+/***/ }),
+
+/***/ 3916:
+/***/ ((module) => {
+
+"use strict";
+
+
+const MAX_TIMEOUT = 1000
+
+function wait (state, index, expected, timeout, done) {
+  const max = Date.now() + timeout
+  let current = Atomics.load(state, index)
+  if (current === expected) {
+    done(null, 'ok')
+    return
+  }
+  let prior = current
+  const check = (backoff) => {
+    if (Date.now() > max) {
+      done(null, 'timed-out')
+    } else {
+      setTimeout(() => {
+        prior = current
+        current = Atomics.load(state, index)
+        if (current === prior) {
+          check(backoff >= MAX_TIMEOUT ? MAX_TIMEOUT : backoff * 2)
+        } else {
+          if (current === expected) done(null, 'ok')
+          else done(null, 'not-equal')
+        }
+      }, backoff)
+    }
+  }
+  check(1)
+}
+
+// let waitDiffCount = 0
+function waitDiff (state, index, expected, timeout, done) {
+  // const id = waitDiffCount++
+  // process._rawDebug(`>>> waitDiff ${id}`)
+  const max = Date.now() + timeout
+  let current = Atomics.load(state, index)
+  if (current !== expected) {
+    done(null, 'ok')
+    return
+  }
+  const check = (backoff) => {
+    // process._rawDebug(`${id} ${index} current ${current} expected ${expected}`)
+    // process._rawDebug('' + backoff)
+    if (Date.now() > max) {
+      done(null, 'timed-out')
+    } else {
+      setTimeout(() => {
+        current = Atomics.load(state, index)
+        if (current !== expected) {
+          done(null, 'ok')
+        } else {
+          check(backoff >= MAX_TIMEOUT ? MAX_TIMEOUT : backoff * 2)
+        }
+      }, backoff)
+    }
+  }
+  check(1)
+}
+
+module.exports = { wait, waitDiff }
+
 
 /***/ }),
 
@@ -16025,6 +26843,330 @@ module.exports.toUnicode = function(domain_name, useSTD3) {
 };
 
 module.exports.PROCESSING_OPTIONS = PROCESSING_OPTIONS;
+
+
+/***/ }),
+
+/***/ 4351:
+/***/ ((module) => {
+
+/******************************************************************************
+Copyright (c) Microsoft Corporation.
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.
+***************************************************************************** */
+/* global global, define, System, Reflect, Promise */
+var __extends;
+var __assign;
+var __rest;
+var __decorate;
+var __param;
+var __metadata;
+var __awaiter;
+var __generator;
+var __exportStar;
+var __values;
+var __read;
+var __spread;
+var __spreadArrays;
+var __spreadArray;
+var __await;
+var __asyncGenerator;
+var __asyncDelegator;
+var __asyncValues;
+var __makeTemplateObject;
+var __importStar;
+var __importDefault;
+var __classPrivateFieldGet;
+var __classPrivateFieldSet;
+var __classPrivateFieldIn;
+var __createBinding;
+(function (factory) {
+    var root = typeof global === "object" ? global : typeof self === "object" ? self : typeof this === "object" ? this : {};
+    if (typeof define === "function" && define.amd) {
+        define("tslib", ["exports"], function (exports) { factory(createExporter(root, createExporter(exports))); });
+    }
+    else if ( true && typeof module.exports === "object") {
+        factory(createExporter(root, createExporter(module.exports)));
+    }
+    else {
+        factory(createExporter(root));
+    }
+    function createExporter(exports, previous) {
+        if (exports !== root) {
+            if (typeof Object.create === "function") {
+                Object.defineProperty(exports, "__esModule", { value: true });
+            }
+            else {
+                exports.__esModule = true;
+            }
+        }
+        return function (id, v) { return exports[id] = previous ? previous(id, v) : v; };
+    }
+})
+(function (exporter) {
+    var extendStatics = Object.setPrototypeOf ||
+        ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+        function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
+
+    __extends = function (d, b) {
+        if (typeof b !== "function" && b !== null)
+            throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
+        extendStatics(d, b);
+        function __() { this.constructor = d; }
+        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+    };
+
+    __assign = Object.assign || function (t) {
+        for (var s, i = 1, n = arguments.length; i < n; i++) {
+            s = arguments[i];
+            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p)) t[p] = s[p];
+        }
+        return t;
+    };
+
+    __rest = function (s, e) {
+        var t = {};
+        for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+            t[p] = s[p];
+        if (s != null && typeof Object.getOwnPropertySymbols === "function")
+            for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+                if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                    t[p[i]] = s[p[i]];
+            }
+        return t;
+    };
+
+    __decorate = function (decorators, target, key, desc) {
+        var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+        if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+        else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+        return c > 3 && r && Object.defineProperty(target, key, r), r;
+    };
+
+    __param = function (paramIndex, decorator) {
+        return function (target, key) { decorator(target, key, paramIndex); }
+    };
+
+    __metadata = function (metadataKey, metadataValue) {
+        if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(metadataKey, metadataValue);
+    };
+
+    __awaiter = function (thisArg, _arguments, P, generator) {
+        function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+        return new (P || (P = Promise))(function (resolve, reject) {
+            function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+            function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+            function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+            step((generator = generator.apply(thisArg, _arguments || [])).next());
+        });
+    };
+
+    __generator = function (thisArg, body) {
+        var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
+        return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+        function verb(n) { return function (v) { return step([n, v]); }; }
+        function step(op) {
+            if (f) throw new TypeError("Generator is already executing.");
+            while (g && (g = 0, op[0] && (_ = 0)), _) try {
+                if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+                if (y = 0, t) op = [op[0] & 2, t.value];
+                switch (op[0]) {
+                    case 0: case 1: t = op; break;
+                    case 4: _.label++; return { value: op[1], done: false };
+                    case 5: _.label++; y = op[1]; op = [0]; continue;
+                    case 7: op = _.ops.pop(); _.trys.pop(); continue;
+                    default:
+                        if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
+                        if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
+                        if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
+                        if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
+                        if (t[2]) _.ops.pop();
+                        _.trys.pop(); continue;
+                }
+                op = body.call(thisArg, _);
+            } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
+            if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
+        }
+    };
+
+    __exportStar = function(m, o) {
+        for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(o, p)) __createBinding(o, m, p);
+    };
+
+    __createBinding = Object.create ? (function(o, m, k, k2) {
+        if (k2 === undefined) k2 = k;
+        var desc = Object.getOwnPropertyDescriptor(m, k);
+        if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+            desc = { enumerable: true, get: function() { return m[k]; } };
+        }
+        Object.defineProperty(o, k2, desc);
+    }) : (function(o, m, k, k2) {
+        if (k2 === undefined) k2 = k;
+        o[k2] = m[k];
+    });
+
+    __values = function (o) {
+        var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
+        if (m) return m.call(o);
+        if (o && typeof o.length === "number") return {
+            next: function () {
+                if (o && i >= o.length) o = void 0;
+                return { value: o && o[i++], done: !o };
+            }
+        };
+        throw new TypeError(s ? "Object is not iterable." : "Symbol.iterator is not defined.");
+    };
+
+    __read = function (o, n) {
+        var m = typeof Symbol === "function" && o[Symbol.iterator];
+        if (!m) return o;
+        var i = m.call(o), r, ar = [], e;
+        try {
+            while ((n === void 0 || n-- > 0) && !(r = i.next()).done) ar.push(r.value);
+        }
+        catch (error) { e = { error: error }; }
+        finally {
+            try {
+                if (r && !r.done && (m = i["return"])) m.call(i);
+            }
+            finally { if (e) throw e.error; }
+        }
+        return ar;
+    };
+
+    /** @deprecated */
+    __spread = function () {
+        for (var ar = [], i = 0; i < arguments.length; i++)
+            ar = ar.concat(__read(arguments[i]));
+        return ar;
+    };
+
+    /** @deprecated */
+    __spreadArrays = function () {
+        for (var s = 0, i = 0, il = arguments.length; i < il; i++) s += arguments[i].length;
+        for (var r = Array(s), k = 0, i = 0; i < il; i++)
+            for (var a = arguments[i], j = 0, jl = a.length; j < jl; j++, k++)
+                r[k] = a[j];
+        return r;
+    };
+
+    __spreadArray = function (to, from, pack) {
+        if (pack || arguments.length === 2) for (var i = 0, l = from.length, ar; i < l; i++) {
+            if (ar || !(i in from)) {
+                if (!ar) ar = Array.prototype.slice.call(from, 0, i);
+                ar[i] = from[i];
+            }
+        }
+        return to.concat(ar || Array.prototype.slice.call(from));
+    };
+
+    __await = function (v) {
+        return this instanceof __await ? (this.v = v, this) : new __await(v);
+    };
+
+    __asyncGenerator = function (thisArg, _arguments, generator) {
+        if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
+        var g = generator.apply(thisArg, _arguments || []), i, q = [];
+        return i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i;
+        function verb(n) { if (g[n]) i[n] = function (v) { return new Promise(function (a, b) { q.push([n, v, a, b]) > 1 || resume(n, v); }); }; }
+        function resume(n, v) { try { step(g[n](v)); } catch (e) { settle(q[0][3], e); } }
+        function step(r) { r.value instanceof __await ? Promise.resolve(r.value.v).then(fulfill, reject) : settle(q[0][2], r);  }
+        function fulfill(value) { resume("next", value); }
+        function reject(value) { resume("throw", value); }
+        function settle(f, v) { if (f(v), q.shift(), q.length) resume(q[0][0], q[0][1]); }
+    };
+
+    __asyncDelegator = function (o) {
+        var i, p;
+        return i = {}, verb("next"), verb("throw", function (e) { throw e; }), verb("return"), i[Symbol.iterator] = function () { return this; }, i;
+        function verb(n, f) { i[n] = o[n] ? function (v) { return (p = !p) ? { value: __await(o[n](v)), done: n === "return" } : f ? f(v) : v; } : f; }
+    };
+
+    __asyncValues = function (o) {
+        if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
+        var m = o[Symbol.asyncIterator], i;
+        return m ? m.call(o) : (o = typeof __values === "function" ? __values(o) : o[Symbol.iterator](), i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i);
+        function verb(n) { i[n] = o[n] && function (v) { return new Promise(function (resolve, reject) { v = o[n](v), settle(resolve, reject, v.done, v.value); }); }; }
+        function settle(resolve, reject, d, v) { Promise.resolve(v).then(function(v) { resolve({ value: v, done: d }); }, reject); }
+    };
+
+    __makeTemplateObject = function (cooked, raw) {
+        if (Object.defineProperty) { Object.defineProperty(cooked, "raw", { value: raw }); } else { cooked.raw = raw; }
+        return cooked;
+    };
+
+    var __setModuleDefault = Object.create ? (function(o, v) {
+        Object.defineProperty(o, "default", { enumerable: true, value: v });
+    }) : function(o, v) {
+        o["default"] = v;
+    };
+
+    __importStar = function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+
+    __importDefault = function (mod) {
+        return (mod && mod.__esModule) ? mod : { "default": mod };
+    };
+
+    __classPrivateFieldGet = function (receiver, state, kind, f) {
+        if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a getter");
+        if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
+        return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
+    };
+
+    __classPrivateFieldSet = function (receiver, state, value, kind, f) {
+        if (kind === "m") throw new TypeError("Private method is not writable");
+        if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a setter");
+        if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot write private member to an object whose class did not declare it");
+        return (kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value)), value;
+    };
+
+    __classPrivateFieldIn = function (state, receiver) {
+        if (receiver === null || (typeof receiver !== "object" && typeof receiver !== "function")) throw new TypeError("Cannot use 'in' operator on non-object");
+        return typeof state === "function" ? receiver === state : state.has(receiver);
+    };
+
+    exporter("__extends", __extends);
+    exporter("__assign", __assign);
+    exporter("__rest", __rest);
+    exporter("__decorate", __decorate);
+    exporter("__param", __param);
+    exporter("__metadata", __metadata);
+    exporter("__awaiter", __awaiter);
+    exporter("__generator", __generator);
+    exporter("__exportStar", __exportStar);
+    exporter("__createBinding", __createBinding);
+    exporter("__values", __values);
+    exporter("__read", __read);
+    exporter("__spread", __spread);
+    exporter("__spreadArrays", __spreadArrays);
+    exporter("__spreadArray", __spreadArray);
+    exporter("__await", __await);
+    exporter("__asyncGenerator", __asyncGenerator);
+    exporter("__asyncDelegator", __asyncDelegator);
+    exporter("__asyncValues", __asyncValues);
+    exporter("__makeTemplateObject", __makeTemplateObject);
+    exporter("__importStar", __importStar);
+    exporter("__importDefault", __importDefault);
+    exporter("__classPrivateFieldGet", __classPrivateFieldGet);
+    exporter("__classPrivateFieldSet", __classPrivateFieldSet);
+    exporter("__classPrivateFieldIn", __classPrivateFieldIn);
+});
 
 
 /***/ }),
@@ -16306,6 +27448,305 @@ if (process.env.NODE_DEBUG && /\btunnel\b/.test(process.env.NODE_DEBUG)) {
 }
 exports.debug = debug; // for test
 
+
+/***/ }),
+
+/***/ 132:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+function isWhitespace(char) {
+    return "\u0020\u000D\u000A\u0009".indexOf(char) >= 0;
+}
+function untruncateJson(json) {
+    var contextStack = ["topLevel" /* TOP_LEVEL */];
+    var position = 0;
+    var respawnPosition;
+    var respawnStackLength;
+    var respawnReason;
+    var push = function (context) { return contextStack.push(context); };
+    var replace = function (context) {
+        return (contextStack[contextStack.length - 1] = context);
+    };
+    var setRespawn = function (reason) {
+        if (respawnPosition == null) {
+            respawnPosition = position;
+            respawnStackLength = contextStack.length;
+            respawnReason = reason;
+        }
+    };
+    var clearRespawn = function (reason) {
+        if (reason === respawnReason) {
+            respawnPosition = undefined;
+            respawnStackLength = undefined;
+            respawnReason = undefined;
+        }
+    };
+    var pop = function () { return contextStack.pop(); };
+    var dontConsumeCharacter = function () { return position--; };
+    var startAny = function (char) {
+        if ("0" <= char && char <= "9") {
+            push("number" /* NUMBER */);
+            return;
+        }
+        switch (char) {
+            case '"':
+                push("string" /* STRING */);
+                return;
+            case "-":
+                push("numberNeedsDigit" /* NUMBER_NEEDS_DIGIT */);
+                return;
+            case "t":
+                push("true" /* TRUE */);
+                return;
+            case "f":
+                push("false" /* FALSE */);
+                return;
+            case "n":
+                push("null" /* NULL */);
+                return;
+            case "[":
+                push("arrayNeedsValue" /* ARRAY_NEEDS_VALUE */);
+                return;
+            case "{":
+                push("objectNeedsKey" /* OBJECT_NEEDS_KEY */);
+                return;
+        }
+    };
+    for (var length = json.length; position < length; position++) {
+        var char = json[position];
+        switch (contextStack[contextStack.length - 1]) {
+            case "topLevel" /* TOP_LEVEL */:
+                startAny(char);
+                break;
+            case "string" /* STRING */:
+                switch (char) {
+                    case '"':
+                        pop();
+                        break;
+                    case "\\":
+                        setRespawn("stringEscape" /* STRING_ESCAPE */);
+                        push("stringEscaped" /* STRING_ESCAPED */);
+                        break;
+                }
+                break;
+            case "stringEscaped" /* STRING_ESCAPED */:
+                if (char === "u") {
+                    push("stringUnicode" /* STRING_UNICODE */);
+                }
+                else {
+                    clearRespawn("stringEscape" /* STRING_ESCAPE */);
+                    pop();
+                }
+                break;
+            case "stringUnicode" /* STRING_UNICODE */:
+                if (position - json.lastIndexOf("u", position) === 4) {
+                    clearRespawn("stringEscape" /* STRING_ESCAPE */);
+                    pop();
+                }
+                break;
+            case "number" /* NUMBER */:
+                if (char === ".") {
+                    replace("numberNeedsDigit" /* NUMBER_NEEDS_DIGIT */);
+                }
+                else if (char === "e" || char === "E") {
+                    replace("numberNeedsExponent" /* NUMBER_NEEDS_EXPONENT */);
+                }
+                else if (char < "0" || char > "9") {
+                    dontConsumeCharacter();
+                    pop();
+                }
+                break;
+            case "numberNeedsDigit" /* NUMBER_NEEDS_DIGIT */:
+                replace("number" /* NUMBER */);
+                break;
+            case "numberNeedsExponent" /* NUMBER_NEEDS_EXPONENT */:
+                if (char === "+" || char === "-") {
+                    replace("numberNeedsDigit" /* NUMBER_NEEDS_DIGIT */);
+                }
+                else {
+                    replace("number" /* NUMBER */);
+                }
+                break;
+            case "true" /* TRUE */:
+            case "false" /* FALSE */:
+            case "null" /* NULL */:
+                if (char < "a" || char > "z") {
+                    dontConsumeCharacter();
+                    pop();
+                }
+                break;
+            case "arrayNeedsValue" /* ARRAY_NEEDS_VALUE */:
+                if (char === "]") {
+                    pop();
+                }
+                else if (!isWhitespace(char)) {
+                    clearRespawn("collectionItem" /* COLLECTION_ITEM */);
+                    replace("arrayNeedsComma" /* ARRAY_NEEDS_COMMA */);
+                    startAny(char);
+                }
+                break;
+            case "arrayNeedsComma" /* ARRAY_NEEDS_COMMA */:
+                if (char === "]") {
+                    pop();
+                }
+                else if (char === ",") {
+                    setRespawn("collectionItem" /* COLLECTION_ITEM */);
+                    replace("arrayNeedsValue" /* ARRAY_NEEDS_VALUE */);
+                }
+                break;
+            case "objectNeedsKey" /* OBJECT_NEEDS_KEY */:
+                if (char === "}") {
+                    pop();
+                }
+                else if (char === '"') {
+                    setRespawn("collectionItem" /* COLLECTION_ITEM */);
+                    replace("objectNeedsColon" /* OBJECT_NEEDS_COLON */);
+                    push("string" /* STRING */);
+                }
+                break;
+            case "objectNeedsColon" /* OBJECT_NEEDS_COLON */:
+                if (char === ":") {
+                    replace("objectNeedsValue" /* OBJECT_NEEDS_VALUE */);
+                }
+                break;
+            case "objectNeedsValue" /* OBJECT_NEEDS_VALUE */:
+                if (!isWhitespace(char)) {
+                    clearRespawn("collectionItem" /* COLLECTION_ITEM */);
+                    replace("objectNeedsComma" /* OBJECT_NEEDS_COMMA */);
+                    startAny(char);
+                }
+                break;
+            case "objectNeedsComma" /* OBJECT_NEEDS_COMMA */:
+                if (char === "}") {
+                    pop();
+                }
+                else if (char === ",") {
+                    setRespawn("collectionItem" /* COLLECTION_ITEM */);
+                    replace("objectNeedsKey" /* OBJECT_NEEDS_KEY */);
+                }
+                break;
+        }
+    }
+    if (respawnStackLength != null) {
+        contextStack.length = respawnStackLength;
+    }
+    var result = [
+        respawnPosition != null ? json.slice(0, respawnPosition) : json,
+    ];
+    var finishWord = function (word) {
+        return result.push(word.slice(json.length - json.lastIndexOf(word[0])));
+    };
+    for (var i = contextStack.length - 1; i >= 0; i--) {
+        switch (contextStack[i]) {
+            case "string" /* STRING */:
+                result.push('"');
+                break;
+            case "numberNeedsDigit" /* NUMBER_NEEDS_DIGIT */:
+            case "numberNeedsExponent" /* NUMBER_NEEDS_EXPONENT */:
+                result.push("0");
+                break;
+            case "true" /* TRUE */:
+                finishWord("true");
+                break;
+            case "false" /* FALSE */:
+                finishWord("false");
+                break;
+            case "null" /* NULL */:
+                finishWord("null");
+                break;
+            case "arrayNeedsValue" /* ARRAY_NEEDS_VALUE */:
+            case "arrayNeedsComma" /* ARRAY_NEEDS_COMMA */:
+                result.push("]");
+                break;
+            case "objectNeedsKey" /* OBJECT_NEEDS_KEY */:
+            case "objectNeedsColon" /* OBJECT_NEEDS_COLON */:
+            case "objectNeedsValue" /* OBJECT_NEEDS_VALUE */:
+            case "objectNeedsComma" /* OBJECT_NEEDS_COMMA */:
+                result.push("}");
+                break;
+        }
+    }
+    return result.join("");
+}
+exports["default"] = untruncateJson;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 6256:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.upperCaseFirst = void 0;
+/**
+ * Upper case the first character of an input string.
+ */
+function upperCaseFirst(input) {
+    return input.charAt(0).toUpperCase() + input.substr(1);
+}
+exports.upperCaseFirst = upperCaseFirst;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 5997:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.upperCase = exports.localeUpperCase = void 0;
+/**
+ * Source: ftp://ftp.unicode.org/Public/UCD/latest/ucd/SpecialCasing.txt
+ */
+var SUPPORTED_LOCALE = {
+    tr: {
+        regexp: /[\u0069]/g,
+        map: {
+            i: "\u0130",
+        },
+    },
+    az: {
+        regexp: /[\u0069]/g,
+        map: {
+            i: "\u0130",
+        },
+    },
+    lt: {
+        regexp: /[\u0069\u006A\u012F]\u0307|\u0069\u0307[\u0300\u0301\u0303]/g,
+        map: {
+            i̇: "\u0049",
+            j̇: "\u004A",
+            į̇: "\u012E",
+            i̇̀: "\u00CC",
+            i̇́: "\u00CD",
+            i̇̃: "\u0128",
+        },
+    },
+};
+/**
+ * Localized upper case.
+ */
+function localeUpperCase(str, locale) {
+    var lang = SUPPORTED_LOCALE[locale.toLowerCase()];
+    if (lang)
+        return upperCase(str.replace(lang.regexp, function (m) { return lang.map[m]; }));
+    return upperCase(str);
+}
+exports.localeUpperCase = localeUpperCase;
+/**
+ * Upper case as a function.
+ */
+function upperCase(str) {
+    return str.toUpperCase();
+}
+exports.upperCase = upperCase;
+//# sourceMappingURL=index.js.map
 
 /***/ }),
 
@@ -18957,7 +30398,6 @@ async function main() {
     const client = opvious_1.OpviousClient.create({
         authorization: core.getInput('token', { required: true }),
         apiEndpoint: core.getInput('api-endpoint') || undefined,
-        hubEndpoint: core.getInput('hub-endpoint') || undefined,
     });
     const dryRun = core.getBooleanInput('dry-run');
     const tags = commaSeparated(core.getInput('tags'));
@@ -19011,6 +30451,14 @@ module.exports = require("assert");
 
 /***/ }),
 
+/***/ 4300:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("buffer");
+
+/***/ }),
+
 /***/ 6113:
 /***/ ((module) => {
 
@@ -19056,6 +30504,14 @@ module.exports = require("http");
 
 "use strict";
 module.exports = require("https");
+
+/***/ }),
+
+/***/ 8188:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("module");
 
 /***/ }),
 
@@ -19123,6 +30579,22 @@ module.exports = require("util");
 
 /***/ }),
 
+/***/ 5484:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("vm");
+
+/***/ }),
+
+/***/ 1267:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("worker_threads");
+
+/***/ }),
+
 /***/ 9796:
 /***/ ((module) => {
 
@@ -19131,11 +30603,3024 @@ module.exports = require("zlib");
 
 /***/ }),
 
+/***/ 1322:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", ({
+  value: true
+}));
+exports.codeFrameColumns = codeFrameColumns;
+exports["default"] = _default;
+
+var _highlight = __nccwpck_require__(7654);
+
+let deprecationWarningShown = false;
+
+function getDefs(chalk) {
+  return {
+    gutter: chalk.grey,
+    marker: chalk.red.bold,
+    message: chalk.red.bold
+  };
+}
+
+const NEWLINE = /\r\n|[\n\r\u2028\u2029]/;
+
+function getMarkerLines(loc, source, opts) {
+  const startLoc = Object.assign({
+    column: 0,
+    line: -1
+  }, loc.start);
+  const endLoc = Object.assign({}, startLoc, loc.end);
+  const {
+    linesAbove = 2,
+    linesBelow = 3
+  } = opts || {};
+  const startLine = startLoc.line;
+  const startColumn = startLoc.column;
+  const endLine = endLoc.line;
+  const endColumn = endLoc.column;
+  let start = Math.max(startLine - (linesAbove + 1), 0);
+  let end = Math.min(source.length, endLine + linesBelow);
+
+  if (startLine === -1) {
+    start = 0;
+  }
+
+  if (endLine === -1) {
+    end = source.length;
+  }
+
+  const lineDiff = endLine - startLine;
+  const markerLines = {};
+
+  if (lineDiff) {
+    for (let i = 0; i <= lineDiff; i++) {
+      const lineNumber = i + startLine;
+
+      if (!startColumn) {
+        markerLines[lineNumber] = true;
+      } else if (i === 0) {
+        const sourceLength = source[lineNumber - 1].length;
+        markerLines[lineNumber] = [startColumn, sourceLength - startColumn + 1];
+      } else if (i === lineDiff) {
+        markerLines[lineNumber] = [0, endColumn];
+      } else {
+        const sourceLength = source[lineNumber - i].length;
+        markerLines[lineNumber] = [0, sourceLength];
+      }
+    }
+  } else {
+    if (startColumn === endColumn) {
+      if (startColumn) {
+        markerLines[startLine] = [startColumn, 0];
+      } else {
+        markerLines[startLine] = true;
+      }
+    } else {
+      markerLines[startLine] = [startColumn, endColumn - startColumn];
+    }
+  }
+
+  return {
+    start,
+    end,
+    markerLines
+  };
+}
+
+function codeFrameColumns(rawLines, loc, opts = {}) {
+  const highlighted = (opts.highlightCode || opts.forceColor) && (0, _highlight.shouldHighlight)(opts);
+  const chalk = (0, _highlight.getChalk)(opts);
+  const defs = getDefs(chalk);
+
+  const maybeHighlight = (chalkFn, string) => {
+    return highlighted ? chalkFn(string) : string;
+  };
+
+  const lines = rawLines.split(NEWLINE);
+  const {
+    start,
+    end,
+    markerLines
+  } = getMarkerLines(loc, lines, opts);
+  const hasColumns = loc.start && typeof loc.start.column === "number";
+  const numberMaxWidth = String(end).length;
+  const highlightedLines = highlighted ? (0, _highlight.default)(rawLines, opts) : rawLines;
+  let frame = highlightedLines.split(NEWLINE, end).slice(start, end).map((line, index) => {
+    const number = start + 1 + index;
+    const paddedNumber = ` ${number}`.slice(-numberMaxWidth);
+    const gutter = ` ${paddedNumber} |`;
+    const hasMarker = markerLines[number];
+    const lastMarkerLine = !markerLines[number + 1];
+
+    if (hasMarker) {
+      let markerLine = "";
+
+      if (Array.isArray(hasMarker)) {
+        const markerSpacing = line.slice(0, Math.max(hasMarker[0] - 1, 0)).replace(/[^\t]/g, " ");
+        const numberOfMarkers = hasMarker[1] || 1;
+        markerLine = ["\n ", maybeHighlight(defs.gutter, gutter.replace(/\d/g, " ")), " ", markerSpacing, maybeHighlight(defs.marker, "^").repeat(numberOfMarkers)].join("");
+
+        if (lastMarkerLine && opts.message) {
+          markerLine += " " + maybeHighlight(defs.message, opts.message);
+        }
+      }
+
+      return [maybeHighlight(defs.marker, ">"), maybeHighlight(defs.gutter, gutter), line.length > 0 ? ` ${line}` : "", markerLine].join("");
+    } else {
+      return ` ${maybeHighlight(defs.gutter, gutter)}${line.length > 0 ? ` ${line}` : ""}`;
+    }
+  }).join("\n");
+
+  if (opts.message && !hasColumns) {
+    frame = `${" ".repeat(numberMaxWidth + 1)}${opts.message}\n${frame}`;
+  }
+
+  if (highlighted) {
+    return chalk.reset(frame);
+  } else {
+    return frame;
+  }
+}
+
+function _default(rawLines, lineNumber, colNumber, opts = {}) {
+  if (!deprecationWarningShown) {
+    deprecationWarningShown = true;
+    const message = "Passing lineNumber and colNumber is deprecated to @babel/code-frame. Please use `codeFrameColumns`.";
+
+    if (process.emitWarning) {
+      process.emitWarning(message, "DeprecationWarning");
+    } else {
+      const deprecationError = new Error(message);
+      deprecationError.name = "DeprecationWarning";
+      console.warn(new Error(message));
+    }
+  }
+
+  colNumber = Math.max(colNumber, 0);
+  const location = {
+    start: {
+      column: colNumber,
+      line: lineNumber
+    }
+  };
+  return codeFrameColumns(rawLines, location, opts);
+}
+
+/***/ }),
+
+/***/ 8875:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", ({
+  value: true
+}));
+exports.isIdentifierChar = isIdentifierChar;
+exports.isIdentifierName = isIdentifierName;
+exports.isIdentifierStart = isIdentifierStart;
+let nonASCIIidentifierStartChars = "\xaa\xb5\xba\xc0-\xd6\xd8-\xf6\xf8-\u02c1\u02c6-\u02d1\u02e0-\u02e4\u02ec\u02ee\u0370-\u0374\u0376\u0377\u037a-\u037d\u037f\u0386\u0388-\u038a\u038c\u038e-\u03a1\u03a3-\u03f5\u03f7-\u0481\u048a-\u052f\u0531-\u0556\u0559\u0560-\u0588\u05d0-\u05ea\u05ef-\u05f2\u0620-\u064a\u066e\u066f\u0671-\u06d3\u06d5\u06e5\u06e6\u06ee\u06ef\u06fa-\u06fc\u06ff\u0710\u0712-\u072f\u074d-\u07a5\u07b1\u07ca-\u07ea\u07f4\u07f5\u07fa\u0800-\u0815\u081a\u0824\u0828\u0840-\u0858\u0860-\u086a\u0870-\u0887\u0889-\u088e\u08a0-\u08c9\u0904-\u0939\u093d\u0950\u0958-\u0961\u0971-\u0980\u0985-\u098c\u098f\u0990\u0993-\u09a8\u09aa-\u09b0\u09b2\u09b6-\u09b9\u09bd\u09ce\u09dc\u09dd\u09df-\u09e1\u09f0\u09f1\u09fc\u0a05-\u0a0a\u0a0f\u0a10\u0a13-\u0a28\u0a2a-\u0a30\u0a32\u0a33\u0a35\u0a36\u0a38\u0a39\u0a59-\u0a5c\u0a5e\u0a72-\u0a74\u0a85-\u0a8d\u0a8f-\u0a91\u0a93-\u0aa8\u0aaa-\u0ab0\u0ab2\u0ab3\u0ab5-\u0ab9\u0abd\u0ad0\u0ae0\u0ae1\u0af9\u0b05-\u0b0c\u0b0f\u0b10\u0b13-\u0b28\u0b2a-\u0b30\u0b32\u0b33\u0b35-\u0b39\u0b3d\u0b5c\u0b5d\u0b5f-\u0b61\u0b71\u0b83\u0b85-\u0b8a\u0b8e-\u0b90\u0b92-\u0b95\u0b99\u0b9a\u0b9c\u0b9e\u0b9f\u0ba3\u0ba4\u0ba8-\u0baa\u0bae-\u0bb9\u0bd0\u0c05-\u0c0c\u0c0e-\u0c10\u0c12-\u0c28\u0c2a-\u0c39\u0c3d\u0c58-\u0c5a\u0c5d\u0c60\u0c61\u0c80\u0c85-\u0c8c\u0c8e-\u0c90\u0c92-\u0ca8\u0caa-\u0cb3\u0cb5-\u0cb9\u0cbd\u0cdd\u0cde\u0ce0\u0ce1\u0cf1\u0cf2\u0d04-\u0d0c\u0d0e-\u0d10\u0d12-\u0d3a\u0d3d\u0d4e\u0d54-\u0d56\u0d5f-\u0d61\u0d7a-\u0d7f\u0d85-\u0d96\u0d9a-\u0db1\u0db3-\u0dbb\u0dbd\u0dc0-\u0dc6\u0e01-\u0e30\u0e32\u0e33\u0e40-\u0e46\u0e81\u0e82\u0e84\u0e86-\u0e8a\u0e8c-\u0ea3\u0ea5\u0ea7-\u0eb0\u0eb2\u0eb3\u0ebd\u0ec0-\u0ec4\u0ec6\u0edc-\u0edf\u0f00\u0f40-\u0f47\u0f49-\u0f6c\u0f88-\u0f8c\u1000-\u102a\u103f\u1050-\u1055\u105a-\u105d\u1061\u1065\u1066\u106e-\u1070\u1075-\u1081\u108e\u10a0-\u10c5\u10c7\u10cd\u10d0-\u10fa\u10fc-\u1248\u124a-\u124d\u1250-\u1256\u1258\u125a-\u125d\u1260-\u1288\u128a-\u128d\u1290-\u12b0\u12b2-\u12b5\u12b8-\u12be\u12c0\u12c2-\u12c5\u12c8-\u12d6\u12d8-\u1310\u1312-\u1315\u1318-\u135a\u1380-\u138f\u13a0-\u13f5\u13f8-\u13fd\u1401-\u166c\u166f-\u167f\u1681-\u169a\u16a0-\u16ea\u16ee-\u16f8\u1700-\u1711\u171f-\u1731\u1740-\u1751\u1760-\u176c\u176e-\u1770\u1780-\u17b3\u17d7\u17dc\u1820-\u1878\u1880-\u18a8\u18aa\u18b0-\u18f5\u1900-\u191e\u1950-\u196d\u1970-\u1974\u1980-\u19ab\u19b0-\u19c9\u1a00-\u1a16\u1a20-\u1a54\u1aa7\u1b05-\u1b33\u1b45-\u1b4c\u1b83-\u1ba0\u1bae\u1baf\u1bba-\u1be5\u1c00-\u1c23\u1c4d-\u1c4f\u1c5a-\u1c7d\u1c80-\u1c88\u1c90-\u1cba\u1cbd-\u1cbf\u1ce9-\u1cec\u1cee-\u1cf3\u1cf5\u1cf6\u1cfa\u1d00-\u1dbf\u1e00-\u1f15\u1f18-\u1f1d\u1f20-\u1f45\u1f48-\u1f4d\u1f50-\u1f57\u1f59\u1f5b\u1f5d\u1f5f-\u1f7d\u1f80-\u1fb4\u1fb6-\u1fbc\u1fbe\u1fc2-\u1fc4\u1fc6-\u1fcc\u1fd0-\u1fd3\u1fd6-\u1fdb\u1fe0-\u1fec\u1ff2-\u1ff4\u1ff6-\u1ffc\u2071\u207f\u2090-\u209c\u2102\u2107\u210a-\u2113\u2115\u2118-\u211d\u2124\u2126\u2128\u212a-\u2139\u213c-\u213f\u2145-\u2149\u214e\u2160-\u2188\u2c00-\u2ce4\u2ceb-\u2cee\u2cf2\u2cf3\u2d00-\u2d25\u2d27\u2d2d\u2d30-\u2d67\u2d6f\u2d80-\u2d96\u2da0-\u2da6\u2da8-\u2dae\u2db0-\u2db6\u2db8-\u2dbe\u2dc0-\u2dc6\u2dc8-\u2dce\u2dd0-\u2dd6\u2dd8-\u2dde\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303c\u3041-\u3096\u309b-\u309f\u30a1-\u30fa\u30fc-\u30ff\u3105-\u312f\u3131-\u318e\u31a0-\u31bf\u31f0-\u31ff\u3400-\u4dbf\u4e00-\ua48c\ua4d0-\ua4fd\ua500-\ua60c\ua610-\ua61f\ua62a\ua62b\ua640-\ua66e\ua67f-\ua69d\ua6a0-\ua6ef\ua717-\ua71f\ua722-\ua788\ua78b-\ua7ca\ua7d0\ua7d1\ua7d3\ua7d5-\ua7d9\ua7f2-\ua801\ua803-\ua805\ua807-\ua80a\ua80c-\ua822\ua840-\ua873\ua882-\ua8b3\ua8f2-\ua8f7\ua8fb\ua8fd\ua8fe\ua90a-\ua925\ua930-\ua946\ua960-\ua97c\ua984-\ua9b2\ua9cf\ua9e0-\ua9e4\ua9e6-\ua9ef\ua9fa-\ua9fe\uaa00-\uaa28\uaa40-\uaa42\uaa44-\uaa4b\uaa60-\uaa76\uaa7a\uaa7e-\uaaaf\uaab1\uaab5\uaab6\uaab9-\uaabd\uaac0\uaac2\uaadb-\uaadd\uaae0-\uaaea\uaaf2-\uaaf4\uab01-\uab06\uab09-\uab0e\uab11-\uab16\uab20-\uab26\uab28-\uab2e\uab30-\uab5a\uab5c-\uab69\uab70-\uabe2\uac00-\ud7a3\ud7b0-\ud7c6\ud7cb-\ud7fb\uf900-\ufa6d\ufa70-\ufad9\ufb00-\ufb06\ufb13-\ufb17\ufb1d\ufb1f-\ufb28\ufb2a-\ufb36\ufb38-\ufb3c\ufb3e\ufb40\ufb41\ufb43\ufb44\ufb46-\ufbb1\ufbd3-\ufd3d\ufd50-\ufd8f\ufd92-\ufdc7\ufdf0-\ufdfb\ufe70-\ufe74\ufe76-\ufefc\uff21-\uff3a\uff41-\uff5a\uff66-\uffbe\uffc2-\uffc7\uffca-\uffcf\uffd2-\uffd7\uffda-\uffdc";
+let nonASCIIidentifierChars = "\u200c\u200d\xb7\u0300-\u036f\u0387\u0483-\u0487\u0591-\u05bd\u05bf\u05c1\u05c2\u05c4\u05c5\u05c7\u0610-\u061a\u064b-\u0669\u0670\u06d6-\u06dc\u06df-\u06e4\u06e7\u06e8\u06ea-\u06ed\u06f0-\u06f9\u0711\u0730-\u074a\u07a6-\u07b0\u07c0-\u07c9\u07eb-\u07f3\u07fd\u0816-\u0819\u081b-\u0823\u0825-\u0827\u0829-\u082d\u0859-\u085b\u0898-\u089f\u08ca-\u08e1\u08e3-\u0903\u093a-\u093c\u093e-\u094f\u0951-\u0957\u0962\u0963\u0966-\u096f\u0981-\u0983\u09bc\u09be-\u09c4\u09c7\u09c8\u09cb-\u09cd\u09d7\u09e2\u09e3\u09e6-\u09ef\u09fe\u0a01-\u0a03\u0a3c\u0a3e-\u0a42\u0a47\u0a48\u0a4b-\u0a4d\u0a51\u0a66-\u0a71\u0a75\u0a81-\u0a83\u0abc\u0abe-\u0ac5\u0ac7-\u0ac9\u0acb-\u0acd\u0ae2\u0ae3\u0ae6-\u0aef\u0afa-\u0aff\u0b01-\u0b03\u0b3c\u0b3e-\u0b44\u0b47\u0b48\u0b4b-\u0b4d\u0b55-\u0b57\u0b62\u0b63\u0b66-\u0b6f\u0b82\u0bbe-\u0bc2\u0bc6-\u0bc8\u0bca-\u0bcd\u0bd7\u0be6-\u0bef\u0c00-\u0c04\u0c3c\u0c3e-\u0c44\u0c46-\u0c48\u0c4a-\u0c4d\u0c55\u0c56\u0c62\u0c63\u0c66-\u0c6f\u0c81-\u0c83\u0cbc\u0cbe-\u0cc4\u0cc6-\u0cc8\u0cca-\u0ccd\u0cd5\u0cd6\u0ce2\u0ce3\u0ce6-\u0cef\u0cf3\u0d00-\u0d03\u0d3b\u0d3c\u0d3e-\u0d44\u0d46-\u0d48\u0d4a-\u0d4d\u0d57\u0d62\u0d63\u0d66-\u0d6f\u0d81-\u0d83\u0dca\u0dcf-\u0dd4\u0dd6\u0dd8-\u0ddf\u0de6-\u0def\u0df2\u0df3\u0e31\u0e34-\u0e3a\u0e47-\u0e4e\u0e50-\u0e59\u0eb1\u0eb4-\u0ebc\u0ec8-\u0ece\u0ed0-\u0ed9\u0f18\u0f19\u0f20-\u0f29\u0f35\u0f37\u0f39\u0f3e\u0f3f\u0f71-\u0f84\u0f86\u0f87\u0f8d-\u0f97\u0f99-\u0fbc\u0fc6\u102b-\u103e\u1040-\u1049\u1056-\u1059\u105e-\u1060\u1062-\u1064\u1067-\u106d\u1071-\u1074\u1082-\u108d\u108f-\u109d\u135d-\u135f\u1369-\u1371\u1712-\u1715\u1732-\u1734\u1752\u1753\u1772\u1773\u17b4-\u17d3\u17dd\u17e0-\u17e9\u180b-\u180d\u180f-\u1819\u18a9\u1920-\u192b\u1930-\u193b\u1946-\u194f\u19d0-\u19da\u1a17-\u1a1b\u1a55-\u1a5e\u1a60-\u1a7c\u1a7f-\u1a89\u1a90-\u1a99\u1ab0-\u1abd\u1abf-\u1ace\u1b00-\u1b04\u1b34-\u1b44\u1b50-\u1b59\u1b6b-\u1b73\u1b80-\u1b82\u1ba1-\u1bad\u1bb0-\u1bb9\u1be6-\u1bf3\u1c24-\u1c37\u1c40-\u1c49\u1c50-\u1c59\u1cd0-\u1cd2\u1cd4-\u1ce8\u1ced\u1cf4\u1cf7-\u1cf9\u1dc0-\u1dff\u203f\u2040\u2054\u20d0-\u20dc\u20e1\u20e5-\u20f0\u2cef-\u2cf1\u2d7f\u2de0-\u2dff\u302a-\u302f\u3099\u309a\ua620-\ua629\ua66f\ua674-\ua67d\ua69e\ua69f\ua6f0\ua6f1\ua802\ua806\ua80b\ua823-\ua827\ua82c\ua880\ua881\ua8b4-\ua8c5\ua8d0-\ua8d9\ua8e0-\ua8f1\ua8ff-\ua909\ua926-\ua92d\ua947-\ua953\ua980-\ua983\ua9b3-\ua9c0\ua9d0-\ua9d9\ua9e5\ua9f0-\ua9f9\uaa29-\uaa36\uaa43\uaa4c\uaa4d\uaa50-\uaa59\uaa7b-\uaa7d\uaab0\uaab2-\uaab4\uaab7\uaab8\uaabe\uaabf\uaac1\uaaeb-\uaaef\uaaf5\uaaf6\uabe3-\uabea\uabec\uabed\uabf0-\uabf9\ufb1e\ufe00-\ufe0f\ufe20-\ufe2f\ufe33\ufe34\ufe4d-\ufe4f\uff10-\uff19\uff3f";
+const nonASCIIidentifierStart = new RegExp("[" + nonASCIIidentifierStartChars + "]");
+const nonASCIIidentifier = new RegExp("[" + nonASCIIidentifierStartChars + nonASCIIidentifierChars + "]");
+nonASCIIidentifierStartChars = nonASCIIidentifierChars = null;
+const astralIdentifierStartCodes = [0, 11, 2, 25, 2, 18, 2, 1, 2, 14, 3, 13, 35, 122, 70, 52, 268, 28, 4, 48, 48, 31, 14, 29, 6, 37, 11, 29, 3, 35, 5, 7, 2, 4, 43, 157, 19, 35, 5, 35, 5, 39, 9, 51, 13, 10, 2, 14, 2, 6, 2, 1, 2, 10, 2, 14, 2, 6, 2, 1, 68, 310, 10, 21, 11, 7, 25, 5, 2, 41, 2, 8, 70, 5, 3, 0, 2, 43, 2, 1, 4, 0, 3, 22, 11, 22, 10, 30, 66, 18, 2, 1, 11, 21, 11, 25, 71, 55, 7, 1, 65, 0, 16, 3, 2, 2, 2, 28, 43, 28, 4, 28, 36, 7, 2, 27, 28, 53, 11, 21, 11, 18, 14, 17, 111, 72, 56, 50, 14, 50, 14, 35, 349, 41, 7, 1, 79, 28, 11, 0, 9, 21, 43, 17, 47, 20, 28, 22, 13, 52, 58, 1, 3, 0, 14, 44, 33, 24, 27, 35, 30, 0, 3, 0, 9, 34, 4, 0, 13, 47, 15, 3, 22, 0, 2, 0, 36, 17, 2, 24, 20, 1, 64, 6, 2, 0, 2, 3, 2, 14, 2, 9, 8, 46, 39, 7, 3, 1, 3, 21, 2, 6, 2, 1, 2, 4, 4, 0, 19, 0, 13, 4, 159, 52, 19, 3, 21, 2, 31, 47, 21, 1, 2, 0, 185, 46, 42, 3, 37, 47, 21, 0, 60, 42, 14, 0, 72, 26, 38, 6, 186, 43, 117, 63, 32, 7, 3, 0, 3, 7, 2, 1, 2, 23, 16, 0, 2, 0, 95, 7, 3, 38, 17, 0, 2, 0, 29, 0, 11, 39, 8, 0, 22, 0, 12, 45, 20, 0, 19, 72, 264, 8, 2, 36, 18, 0, 50, 29, 113, 6, 2, 1, 2, 37, 22, 0, 26, 5, 2, 1, 2, 31, 15, 0, 328, 18, 16, 0, 2, 12, 2, 33, 125, 0, 80, 921, 103, 110, 18, 195, 2637, 96, 16, 1071, 18, 5, 4026, 582, 8634, 568, 8, 30, 18, 78, 18, 29, 19, 47, 17, 3, 32, 20, 6, 18, 689, 63, 129, 74, 6, 0, 67, 12, 65, 1, 2, 0, 29, 6135, 9, 1237, 43, 8, 8936, 3, 2, 6, 2, 1, 2, 290, 16, 0, 30, 2, 3, 0, 15, 3, 9, 395, 2309, 106, 6, 12, 4, 8, 8, 9, 5991, 84, 2, 70, 2, 1, 3, 0, 3, 1, 3, 3, 2, 11, 2, 0, 2, 6, 2, 64, 2, 3, 3, 7, 2, 6, 2, 27, 2, 3, 2, 4, 2, 0, 4, 6, 2, 339, 3, 24, 2, 24, 2, 30, 2, 24, 2, 30, 2, 24, 2, 30, 2, 24, 2, 30, 2, 24, 2, 7, 1845, 30, 7, 5, 262, 61, 147, 44, 11, 6, 17, 0, 322, 29, 19, 43, 485, 27, 757, 6, 2, 3, 2, 1, 2, 14, 2, 196, 60, 67, 8, 0, 1205, 3, 2, 26, 2, 1, 2, 0, 3, 0, 2, 9, 2, 3, 2, 0, 2, 0, 7, 0, 5, 0, 2, 0, 2, 0, 2, 2, 2, 1, 2, 0, 3, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 1, 2, 0, 3, 3, 2, 6, 2, 3, 2, 3, 2, 0, 2, 9, 2, 16, 6, 2, 2, 4, 2, 16, 4421, 42719, 33, 4153, 7, 221, 3, 5761, 15, 7472, 3104, 541, 1507, 4938, 6, 4191];
+const astralIdentifierCodes = [509, 0, 227, 0, 150, 4, 294, 9, 1368, 2, 2, 1, 6, 3, 41, 2, 5, 0, 166, 1, 574, 3, 9, 9, 370, 1, 81, 2, 71, 10, 50, 3, 123, 2, 54, 14, 32, 10, 3, 1, 11, 3, 46, 10, 8, 0, 46, 9, 7, 2, 37, 13, 2, 9, 6, 1, 45, 0, 13, 2, 49, 13, 9, 3, 2, 11, 83, 11, 7, 0, 3, 0, 158, 11, 6, 9, 7, 3, 56, 1, 2, 6, 3, 1, 3, 2, 10, 0, 11, 1, 3, 6, 4, 4, 193, 17, 10, 9, 5, 0, 82, 19, 13, 9, 214, 6, 3, 8, 28, 1, 83, 16, 16, 9, 82, 12, 9, 9, 84, 14, 5, 9, 243, 14, 166, 9, 71, 5, 2, 1, 3, 3, 2, 0, 2, 1, 13, 9, 120, 6, 3, 6, 4, 0, 29, 9, 41, 6, 2, 3, 9, 0, 10, 10, 47, 15, 406, 7, 2, 7, 17, 9, 57, 21, 2, 13, 123, 5, 4, 0, 2, 1, 2, 6, 2, 0, 9, 9, 49, 4, 2, 1, 2, 4, 9, 9, 330, 3, 10, 1, 2, 0, 49, 6, 4, 4, 14, 9, 5351, 0, 7, 14, 13835, 9, 87, 9, 39, 4, 60, 6, 26, 9, 1014, 0, 2, 54, 8, 3, 82, 0, 12, 1, 19628, 1, 4706, 45, 3, 22, 543, 4, 4, 5, 9, 7, 3, 6, 31, 3, 149, 2, 1418, 49, 513, 54, 5, 49, 9, 0, 15, 0, 23, 4, 2, 14, 1361, 6, 2, 16, 3, 6, 2, 1, 2, 4, 101, 0, 161, 6, 10, 9, 357, 0, 62, 13, 499, 13, 983, 6, 110, 6, 6, 9, 4759, 9, 787719, 239];
+
+function isInAstralSet(code, set) {
+  let pos = 0x10000;
+
+  for (let i = 0, length = set.length; i < length; i += 2) {
+    pos += set[i];
+    if (pos > code) return false;
+    pos += set[i + 1];
+    if (pos >= code) return true;
+  }
+
+  return false;
+}
+
+function isIdentifierStart(code) {
+  if (code < 65) return code === 36;
+  if (code <= 90) return true;
+  if (code < 97) return code === 95;
+  if (code <= 122) return true;
+
+  if (code <= 0xffff) {
+    return code >= 0xaa && nonASCIIidentifierStart.test(String.fromCharCode(code));
+  }
+
+  return isInAstralSet(code, astralIdentifierStartCodes);
+}
+
+function isIdentifierChar(code) {
+  if (code < 48) return code === 36;
+  if (code < 58) return true;
+  if (code < 65) return false;
+  if (code <= 90) return true;
+  if (code < 97) return code === 95;
+  if (code <= 122) return true;
+
+  if (code <= 0xffff) {
+    return code >= 0xaa && nonASCIIidentifier.test(String.fromCharCode(code));
+  }
+
+  return isInAstralSet(code, astralIdentifierStartCodes) || isInAstralSet(code, astralIdentifierCodes);
+}
+
+function isIdentifierName(name) {
+  let isFirst = true;
+
+  for (let i = 0; i < name.length; i++) {
+    let cp = name.charCodeAt(i);
+
+    if ((cp & 0xfc00) === 0xd800 && i + 1 < name.length) {
+      const trail = name.charCodeAt(++i);
+
+      if ((trail & 0xfc00) === 0xdc00) {
+        cp = 0x10000 + ((cp & 0x3ff) << 10) + (trail & 0x3ff);
+      }
+    }
+
+    if (isFirst) {
+      isFirst = false;
+
+      if (!isIdentifierStart(cp)) {
+        return false;
+      }
+    } else if (!isIdentifierChar(cp)) {
+      return false;
+    }
+  }
+
+  return !isFirst;
+}
+
+//# sourceMappingURL=identifier.js.map
+
+
+/***/ }),
+
+/***/ 2738:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", ({
+  value: true
+}));
+Object.defineProperty(exports, "isIdentifierChar", ({
+  enumerable: true,
+  get: function () {
+    return _identifier.isIdentifierChar;
+  }
+}));
+Object.defineProperty(exports, "isIdentifierName", ({
+  enumerable: true,
+  get: function () {
+    return _identifier.isIdentifierName;
+  }
+}));
+Object.defineProperty(exports, "isIdentifierStart", ({
+  enumerable: true,
+  get: function () {
+    return _identifier.isIdentifierStart;
+  }
+}));
+Object.defineProperty(exports, "isKeyword", ({
+  enumerable: true,
+  get: function () {
+    return _keyword.isKeyword;
+  }
+}));
+Object.defineProperty(exports, "isReservedWord", ({
+  enumerable: true,
+  get: function () {
+    return _keyword.isReservedWord;
+  }
+}));
+Object.defineProperty(exports, "isStrictBindOnlyReservedWord", ({
+  enumerable: true,
+  get: function () {
+    return _keyword.isStrictBindOnlyReservedWord;
+  }
+}));
+Object.defineProperty(exports, "isStrictBindReservedWord", ({
+  enumerable: true,
+  get: function () {
+    return _keyword.isStrictBindReservedWord;
+  }
+}));
+Object.defineProperty(exports, "isStrictReservedWord", ({
+  enumerable: true,
+  get: function () {
+    return _keyword.isStrictReservedWord;
+  }
+}));
+
+var _identifier = __nccwpck_require__(8875);
+
+var _keyword = __nccwpck_require__(17);
+
+//# sourceMappingURL=index.js.map
+
+
+/***/ }),
+
+/***/ 17:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", ({
+  value: true
+}));
+exports.isKeyword = isKeyword;
+exports.isReservedWord = isReservedWord;
+exports.isStrictBindOnlyReservedWord = isStrictBindOnlyReservedWord;
+exports.isStrictBindReservedWord = isStrictBindReservedWord;
+exports.isStrictReservedWord = isStrictReservedWord;
+const reservedWords = {
+  keyword: ["break", "case", "catch", "continue", "debugger", "default", "do", "else", "finally", "for", "function", "if", "return", "switch", "throw", "try", "var", "const", "while", "with", "new", "this", "super", "class", "extends", "export", "import", "null", "true", "false", "in", "instanceof", "typeof", "void", "delete"],
+  strict: ["implements", "interface", "let", "package", "private", "protected", "public", "static", "yield"],
+  strictBind: ["eval", "arguments"]
+};
+const keywords = new Set(reservedWords.keyword);
+const reservedWordsStrictSet = new Set(reservedWords.strict);
+const reservedWordsStrictBindSet = new Set(reservedWords.strictBind);
+
+function isReservedWord(word, inModule) {
+  return inModule && word === "await" || word === "enum";
+}
+
+function isStrictReservedWord(word, inModule) {
+  return isReservedWord(word, inModule) || reservedWordsStrictSet.has(word);
+}
+
+function isStrictBindOnlyReservedWord(word) {
+  return reservedWordsStrictBindSet.has(word);
+}
+
+function isStrictBindReservedWord(word, inModule) {
+  return isStrictReservedWord(word, inModule) || isStrictBindOnlyReservedWord(word);
+}
+
+function isKeyword(word) {
+  return keywords.has(word);
+}
+
+//# sourceMappingURL=keyword.js.map
+
+
+/***/ }),
+
+/***/ 7654:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", ({
+  value: true
+}));
+exports["default"] = highlight;
+exports.getChalk = getChalk;
+exports.shouldHighlight = shouldHighlight;
+
+var _jsTokens = __nccwpck_require__(1531);
+
+var _helperValidatorIdentifier = __nccwpck_require__(2738);
+
+var _chalk = __nccwpck_require__(8707);
+
+const sometimesKeywords = new Set(["as", "async", "from", "get", "of", "set"]);
+
+function getDefs(chalk) {
+  return {
+    keyword: chalk.cyan,
+    capitalized: chalk.yellow,
+    jsxIdentifier: chalk.yellow,
+    punctuator: chalk.yellow,
+    number: chalk.magenta,
+    string: chalk.green,
+    regex: chalk.magenta,
+    comment: chalk.grey,
+    invalid: chalk.white.bgRed.bold
+  };
+}
+
+const NEWLINE = /\r\n|[\n\r\u2028\u2029]/;
+const BRACKET = /^[()[\]{}]$/;
+let tokenize;
+{
+  const JSX_TAG = /^[a-z][\w-]*$/i;
+
+  const getTokenType = function (token, offset, text) {
+    if (token.type === "name") {
+      if ((0, _helperValidatorIdentifier.isKeyword)(token.value) || (0, _helperValidatorIdentifier.isStrictReservedWord)(token.value, true) || sometimesKeywords.has(token.value)) {
+        return "keyword";
+      }
+
+      if (JSX_TAG.test(token.value) && (text[offset - 1] === "<" || text.slice(offset - 2, offset) == "</")) {
+        return "jsxIdentifier";
+      }
+
+      if (token.value[0] !== token.value[0].toLowerCase()) {
+        return "capitalized";
+      }
+    }
+
+    if (token.type === "punctuator" && BRACKET.test(token.value)) {
+      return "bracket";
+    }
+
+    if (token.type === "invalid" && (token.value === "@" || token.value === "#")) {
+      return "punctuator";
+    }
+
+    return token.type;
+  };
+
+  tokenize = function* (text) {
+    let match;
+
+    while (match = _jsTokens.default.exec(text)) {
+      const token = _jsTokens.matchToToken(match);
+
+      yield {
+        type: getTokenType(token, match.index, text),
+        value: token.value
+      };
+    }
+  };
+}
+
+function highlightTokens(defs, text) {
+  let highlighted = "";
+
+  for (const {
+    type,
+    value
+  } of tokenize(text)) {
+    const colorize = defs[type];
+
+    if (colorize) {
+      highlighted += value.split(NEWLINE).map(str => colorize(str)).join("\n");
+    } else {
+      highlighted += value;
+    }
+  }
+
+  return highlighted;
+}
+
+function shouldHighlight(options) {
+  return !!_chalk.supportsColor || options.forceColor;
+}
+
+function getChalk(options) {
+  return options.forceColor ? new _chalk.constructor({
+    enabled: true,
+    level: 1
+  }) : _chalk;
+}
+
+function highlight(code, options = {}) {
+  if (code !== "" && shouldHighlight(options)) {
+    const chalk = getChalk(options);
+    const defs = getDefs(chalk);
+    return highlightTokens(defs, code);
+  } else {
+    return code;
+  }
+}
+
+/***/ }),
+
+/***/ 5848:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const errSerializer = __nccwpck_require__(7000)
+const reqSerializers = __nccwpck_require__(4521)
+const resSerializers = __nccwpck_require__(352)
+
+module.exports = {
+  err: errSerializer,
+  mapHttpRequest: reqSerializers.mapHttpRequest,
+  mapHttpResponse: resSerializers.mapHttpResponse,
+  req: reqSerializers.reqSerializer,
+  res: resSerializers.resSerializer,
+
+  wrapErrorSerializer: function wrapErrorSerializer (customSerializer) {
+    if (customSerializer === errSerializer) return customSerializer
+    return function wrapErrSerializer (err) {
+      return customSerializer(errSerializer(err))
+    }
+  },
+
+  wrapRequestSerializer: function wrapRequestSerializer (customSerializer) {
+    if (customSerializer === reqSerializers.reqSerializer) return customSerializer
+    return function wrappedReqSerializer (req) {
+      return customSerializer(reqSerializers.reqSerializer(req))
+    }
+  },
+
+  wrapResponseSerializer: function wrapResponseSerializer (customSerializer) {
+    if (customSerializer === resSerializers.resSerializer) return customSerializer
+    return function wrappedResSerializer (res) {
+      return customSerializer(resSerializers.resSerializer(res))
+    }
+  }
+}
+
+
+/***/ }),
+
+/***/ 8468:
+/***/ ((module) => {
+
+"use strict";
+
+
+// **************************************************************
+// * Code initially copied/adapted from "pony-cause" npm module *
+// * Please upstream improvements there                         *
+// **************************************************************
+
+/**
+ * @param {Error|{ cause?: unknown|(()=>err)}} err
+ * @returns {Error|undefined}
+ */
+const getErrorCause = (err) => {
+  if (!err) return
+
+  /** @type {unknown} */
+  // @ts-ignore
+  const cause = err.cause
+
+  // VError / NError style causes
+  if (typeof cause === 'function') {
+    // @ts-ignore
+    const causeResult = err.cause()
+
+    return causeResult instanceof Error
+      ? causeResult
+      : undefined
+  } else {
+    return cause instanceof Error
+      ? cause
+      : undefined
+  }
+}
+
+/**
+ * Internal method that keeps a track of which error we have already added, to avoid circular recursion
+ *
+ * @private
+ * @param {Error} err
+ * @param {Set<Error>} seen
+ * @returns {string}
+ */
+const _stackWithCauses = (err, seen) => {
+  if (!(err instanceof Error)) return ''
+
+  const stack = err.stack || ''
+
+  // Ensure we don't go circular or crazily deep
+  if (seen.has(err)) {
+    return stack + '\ncauses have become circular...'
+  }
+
+  const cause = getErrorCause(err)
+
+  if (cause) {
+    seen.add(err)
+    return (stack + '\ncaused by: ' + _stackWithCauses(cause, seen))
+  } else {
+    return stack
+  }
+}
+
+/**
+ * @param {Error} err
+ * @returns {string}
+ */
+const stackWithCauses = (err) => _stackWithCauses(err, new Set())
+
+/**
+ * Internal method that keeps a track of which error we have already added, to avoid circular recursion
+ *
+ * @private
+ * @param {Error} err
+ * @param {Set<Error>} seen
+ * @param {boolean} [skip]
+ * @returns {string}
+ */
+const _messageWithCauses = (err, seen, skip) => {
+  if (!(err instanceof Error)) return ''
+
+  const message = skip ? '' : (err.message || '')
+
+  // Ensure we don't go circular or crazily deep
+  if (seen.has(err)) {
+    return message + ': ...'
+  }
+
+  const cause = getErrorCause(err)
+
+  if (cause) {
+    seen.add(err)
+
+    // @ts-ignore
+    const skipIfVErrorStyleCause = typeof err.cause === 'function'
+
+    return (message +
+      (skipIfVErrorStyleCause ? '' : ': ') +
+      _messageWithCauses(cause, seen, skipIfVErrorStyleCause))
+  } else {
+    return message
+  }
+}
+
+/**
+ * @param {Error} err
+ * @returns {string}
+ */
+const messageWithCauses = (err) => _messageWithCauses(err, new Set())
+
+module.exports = {
+  getErrorCause,
+  stackWithCauses,
+  messageWithCauses
+}
+
+
+/***/ }),
+
+/***/ 7000:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+module.exports = errSerializer
+
+const { messageWithCauses, stackWithCauses } = __nccwpck_require__(8468)
+
+const { toString } = Object.prototype
+const seen = Symbol('circular-ref-tag')
+const rawSymbol = Symbol('pino-raw-err-ref')
+const pinoErrProto = Object.create({}, {
+  type: {
+    enumerable: true,
+    writable: true,
+    value: undefined
+  },
+  message: {
+    enumerable: true,
+    writable: true,
+    value: undefined
+  },
+  stack: {
+    enumerable: true,
+    writable: true,
+    value: undefined
+  },
+  aggregateErrors: {
+    enumerable: true,
+    writable: true,
+    value: undefined
+  },
+  raw: {
+    enumerable: false,
+    get: function () {
+      return this[rawSymbol]
+    },
+    set: function (val) {
+      this[rawSymbol] = val
+    }
+  }
+})
+Object.defineProperty(pinoErrProto, rawSymbol, {
+  writable: true,
+  value: {}
+})
+
+function errSerializer (err) {
+  if (!(err instanceof Error)) {
+    return err
+  }
+
+  err[seen] = undefined // tag to prevent re-looking at this
+  const _err = Object.create(pinoErrProto)
+  _err.type = toString.call(err.constructor) === '[object Function]'
+    ? err.constructor.name
+    : err.name
+  _err.message = messageWithCauses(err)
+  _err.stack = stackWithCauses(err)
+
+  if (global.AggregateError !== undefined && err instanceof global.AggregateError && Array.isArray(err.errors)) {
+    _err.aggregateErrors = err.errors.map(err => errSerializer(err))
+  }
+
+  for (const key in err) {
+    if (_err[key] === undefined) {
+      const val = err[key]
+      if (val instanceof Error) {
+        // We append cause messages and stacks to _err, therefore skipping causes here
+        if (key !== 'cause' && !Object.prototype.hasOwnProperty.call(val, seen)) {
+          _err[key] = errSerializer(val)
+        }
+      } else {
+        _err[key] = val
+      }
+    }
+  }
+
+  delete err[seen] // clean up tag in case err is serialized again later
+  _err.raw = err
+  return _err
+}
+
+
+/***/ }),
+
+/***/ 4521:
+/***/ ((module) => {
+
+"use strict";
+
+
+module.exports = {
+  mapHttpRequest,
+  reqSerializer
+}
+
+const rawSymbol = Symbol('pino-raw-req-ref')
+const pinoReqProto = Object.create({}, {
+  id: {
+    enumerable: true,
+    writable: true,
+    value: ''
+  },
+  method: {
+    enumerable: true,
+    writable: true,
+    value: ''
+  },
+  url: {
+    enumerable: true,
+    writable: true,
+    value: ''
+  },
+  query: {
+    enumerable: true,
+    writable: true,
+    value: ''
+  },
+  params: {
+    enumerable: true,
+    writable: true,
+    value: ''
+  },
+  headers: {
+    enumerable: true,
+    writable: true,
+    value: {}
+  },
+  remoteAddress: {
+    enumerable: true,
+    writable: true,
+    value: ''
+  },
+  remotePort: {
+    enumerable: true,
+    writable: true,
+    value: ''
+  },
+  raw: {
+    enumerable: false,
+    get: function () {
+      return this[rawSymbol]
+    },
+    set: function (val) {
+      this[rawSymbol] = val
+    }
+  }
+})
+Object.defineProperty(pinoReqProto, rawSymbol, {
+  writable: true,
+  value: {}
+})
+
+function reqSerializer (req) {
+  // req.info is for hapi compat.
+  const connection = req.info || req.socket
+  const _req = Object.create(pinoReqProto)
+  _req.id = (typeof req.id === 'function' ? req.id() : (req.id || (req.info ? req.info.id : undefined)))
+  _req.method = req.method
+  // req.originalUrl is for expressjs compat.
+  if (req.originalUrl) {
+    _req.url = req.originalUrl
+  } else {
+    const path = req.path
+    // path for safe hapi compat.
+    _req.url = typeof path === 'string' ? path : (req.url ? req.url.path || req.url : undefined)
+  }
+
+  if (req.query) {
+    _req.query = req.query
+  }
+
+  if (req.params) {
+    _req.params = req.params
+  }
+
+  _req.headers = req.headers
+  _req.remoteAddress = connection && connection.remoteAddress
+  _req.remotePort = connection && connection.remotePort
+  // req.raw is  for hapi compat/equivalence
+  _req.raw = req.raw || req
+  return _req
+}
+
+function mapHttpRequest (req) {
+  return {
+    req: reqSerializer(req)
+  }
+}
+
+
+/***/ }),
+
+/***/ 352:
+/***/ ((module) => {
+
+"use strict";
+
+
+module.exports = {
+  mapHttpResponse,
+  resSerializer
+}
+
+const rawSymbol = Symbol('pino-raw-res-ref')
+const pinoResProto = Object.create({}, {
+  statusCode: {
+    enumerable: true,
+    writable: true,
+    value: 0
+  },
+  headers: {
+    enumerable: true,
+    writable: true,
+    value: ''
+  },
+  raw: {
+    enumerable: false,
+    get: function () {
+      return this[rawSymbol]
+    },
+    set: function (val) {
+      this[rawSymbol] = val
+    }
+  }
+})
+Object.defineProperty(pinoResProto, rawSymbol, {
+  writable: true,
+  value: {}
+})
+
+function resSerializer (res) {
+  const _res = Object.create(pinoResProto)
+  _res.statusCode = res.headersSent ? res.statusCode : null
+  _res.headers = res.getHeaders ? res.getHeaders() : res._headers
+  _res.raw = res
+  return _res
+}
+
+function mapHttpResponse (res) {
+  return {
+    res: resSerializer(res)
+  }
+}
+
+
+/***/ }),
+
+/***/ 3588:
+/***/ ((module) => {
+
+"use strict";
+
+
+function noOpPrepareStackTrace (_, stack) {
+  return stack
+}
+
+module.exports = function getCallers () {
+  const originalPrepare = Error.prepareStackTrace
+  Error.prepareStackTrace = noOpPrepareStackTrace
+  const stack = new Error().stack
+  Error.prepareStackTrace = originalPrepare
+
+  if (!Array.isArray(stack)) {
+    return undefined
+  }
+
+  const entries = stack.slice(2)
+
+  const fileNames = []
+
+  for (const entry of entries) {
+    if (!entry) {
+      continue
+    }
+
+    fileNames.push(entry.getFileName())
+  }
+
+  return fileNames
+}
+
+
+/***/ }),
+
+/***/ 8015:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+/* eslint no-prototype-builtins: 0 */
+const {
+  lsCacheSym,
+  levelValSym,
+  useOnlyCustomLevelsSym,
+  streamSym,
+  formattersSym,
+  hooksSym
+} = __nccwpck_require__(2232)
+const { noop, genLog } = __nccwpck_require__(8433)
+
+const levels = {
+  trace: 10,
+  debug: 20,
+  info: 30,
+  warn: 40,
+  error: 50,
+  fatal: 60
+}
+const levelMethods = {
+  fatal: (hook) => {
+    const logFatal = genLog(levels.fatal, hook)
+    return function (...args) {
+      const stream = this[streamSym]
+      logFatal.call(this, ...args)
+      if (typeof stream.flushSync === 'function') {
+        try {
+          stream.flushSync()
+        } catch (e) {
+          // https://github.com/pinojs/pino/pull/740#discussion_r346788313
+        }
+      }
+    }
+  },
+  error: (hook) => genLog(levels.error, hook),
+  warn: (hook) => genLog(levels.warn, hook),
+  info: (hook) => genLog(levels.info, hook),
+  debug: (hook) => genLog(levels.debug, hook),
+  trace: (hook) => genLog(levels.trace, hook)
+}
+
+const nums = Object.keys(levels).reduce((o, k) => {
+  o[levels[k]] = k
+  return o
+}, {})
+
+const initialLsCache = Object.keys(nums).reduce((o, k) => {
+  o[k] = '{"level":' + Number(k)
+  return o
+}, {})
+
+function genLsCache (instance) {
+  const formatter = instance[formattersSym].level
+  const { labels } = instance.levels
+  const cache = {}
+  for (const label in labels) {
+    const level = formatter(labels[label], Number(label))
+    cache[label] = JSON.stringify(level).slice(0, -1)
+  }
+  instance[lsCacheSym] = cache
+  return instance
+}
+
+function isStandardLevel (level, useOnlyCustomLevels) {
+  if (useOnlyCustomLevels) {
+    return false
+  }
+
+  switch (level) {
+    case 'fatal':
+    case 'error':
+    case 'warn':
+    case 'info':
+    case 'debug':
+    case 'trace':
+      return true
+    default:
+      return false
+  }
+}
+
+function setLevel (level) {
+  const { labels, values } = this.levels
+  if (typeof level === 'number') {
+    if (labels[level] === undefined) throw Error('unknown level value' + level)
+    level = labels[level]
+  }
+  if (values[level] === undefined) throw Error('unknown level ' + level)
+  const preLevelVal = this[levelValSym]
+  const levelVal = this[levelValSym] = values[level]
+  const useOnlyCustomLevelsVal = this[useOnlyCustomLevelsSym]
+  const hook = this[hooksSym].logMethod
+
+  for (const key in values) {
+    if (levelVal > values[key]) {
+      this[key] = noop
+      continue
+    }
+    this[key] = isStandardLevel(key, useOnlyCustomLevelsVal) ? levelMethods[key](hook) : genLog(values[key], hook)
+  }
+
+  this.emit(
+    'level-change',
+    level,
+    levelVal,
+    labels[preLevelVal],
+    preLevelVal,
+    this
+  )
+}
+
+function getLevel (level) {
+  const { levels, levelVal } = this
+  // protection against potential loss of Pino scope from serializers (edge case with circular refs - https://github.com/pinojs/pino/issues/833)
+  return (levels && levels.labels) ? levels.labels[levelVal] : ''
+}
+
+function isLevelEnabled (logLevel) {
+  const { values } = this.levels
+  const logLevelVal = values[logLevel]
+  return logLevelVal !== undefined && (logLevelVal >= this[levelValSym])
+}
+
+function mappings (customLevels = null, useOnlyCustomLevels = false) {
+  const customNums = customLevels
+    /* eslint-disable */
+    ? Object.keys(customLevels).reduce((o, k) => {
+        o[customLevels[k]] = k
+        return o
+      }, {})
+    : null
+    /* eslint-enable */
+
+  const labels = Object.assign(
+    Object.create(Object.prototype, { Infinity: { value: 'silent' } }),
+    useOnlyCustomLevels ? null : nums,
+    customNums
+  )
+  const values = Object.assign(
+    Object.create(Object.prototype, { silent: { value: Infinity } }),
+    useOnlyCustomLevels ? null : levels,
+    customLevels
+  )
+  return { labels, values }
+}
+
+function assertDefaultLevelFound (defaultLevel, customLevels, useOnlyCustomLevels) {
+  if (typeof defaultLevel === 'number') {
+    const values = [].concat(
+      Object.keys(customLevels || {}).map(key => customLevels[key]),
+      useOnlyCustomLevels ? [] : Object.keys(nums).map(level => +level),
+      Infinity
+    )
+    if (!values.includes(defaultLevel)) {
+      throw Error(`default level:${defaultLevel} must be included in custom levels`)
+    }
+    return
+  }
+
+  const labels = Object.assign(
+    Object.create(Object.prototype, { silent: { value: Infinity } }),
+    useOnlyCustomLevels ? null : levels,
+    customLevels
+  )
+  if (!(defaultLevel in labels)) {
+    throw Error(`default level:${defaultLevel} must be included in custom levels`)
+  }
+}
+
+function assertNoLevelCollisions (levels, customLevels) {
+  const { labels, values } = levels
+  for (const k in customLevels) {
+    if (k in values) {
+      throw Error('levels cannot be overridden')
+    }
+    if (customLevels[k] in labels) {
+      throw Error('pre-existing level values cannot be used for new levels')
+    }
+  }
+}
+
+module.exports = {
+  initialLsCache,
+  genLsCache,
+  levelMethods,
+  getLevel,
+  setLevel,
+  isLevelEnabled,
+  mappings,
+  levels,
+  assertNoLevelCollisions,
+  assertDefaultLevelFound
+}
+
+
+/***/ }),
+
+/***/ 2812:
+/***/ ((module) => {
+
+"use strict";
+
+
+module.exports = { version: '8.7.0' }
+
+
+/***/ }),
+
+/***/ 4411:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const metadata = Symbol.for('pino.metadata')
+const { levels } = __nccwpck_require__(8015)
+
+const defaultLevels = Object.create(levels)
+defaultLevels.silent = Infinity
+
+const DEFAULT_INFO_LEVEL = levels.info
+
+function multistream (streamsArray, opts) {
+  let counter = 0
+  streamsArray = streamsArray || []
+  opts = opts || { dedupe: false }
+
+  let levels = defaultLevels
+  if (opts.levels && typeof opts.levels === 'object') {
+    levels = opts.levels
+  }
+
+  const res = {
+    write,
+    add,
+    flushSync,
+    end,
+    minLevel: 0,
+    streams: [],
+    clone,
+    [metadata]: true
+  }
+
+  if (Array.isArray(streamsArray)) {
+    streamsArray.forEach(add, res)
+  } else {
+    add.call(res, streamsArray)
+  }
+
+  // clean this object up
+  // or it will stay allocated forever
+  // as it is closed on the following closures
+  streamsArray = null
+
+  return res
+
+  // we can exit early because the streams are ordered by level
+  function write (data) {
+    let dest
+    const level = this.lastLevel
+    const { streams } = this
+    // for handling situation when several streams has the same level
+    let recordedLevel = 0
+    let stream
+
+    // if dedupe set to true we send logs to the stream with the highest level
+    // therefore, we have to change sorting order
+    for (let i = initLoopVar(streams.length, opts.dedupe); checkLoopVar(i, streams.length, opts.dedupe); i = adjustLoopVar(i, opts.dedupe)) {
+      dest = streams[i]
+      if (dest.level <= level) {
+        if (recordedLevel !== 0 && recordedLevel !== dest.level) {
+          break
+        }
+        stream = dest.stream
+        if (stream[metadata]) {
+          const { lastTime, lastMsg, lastObj, lastLogger } = this
+          stream.lastLevel = level
+          stream.lastTime = lastTime
+          stream.lastMsg = lastMsg
+          stream.lastObj = lastObj
+          stream.lastLogger = lastLogger
+        }
+        stream.write(data)
+        if (opts.dedupe) {
+          recordedLevel = dest.level
+        }
+      } else if (!opts.dedupe) {
+        break
+      }
+    }
+  }
+
+  function flushSync () {
+    for (const { stream } of this.streams) {
+      if (typeof stream.flushSync === 'function') {
+        stream.flushSync()
+      }
+    }
+  }
+
+  function add (dest) {
+    if (!dest) {
+      return res
+    }
+
+    // Check that dest implements either StreamEntry or DestinationStream
+    const isStream = typeof dest.write === 'function' || dest.stream
+    const stream_ = dest.write ? dest : dest.stream
+    // This is necessary to provide a meaningful error message, otherwise it throws somewhere inside write()
+    if (!isStream) {
+      throw Error('stream object needs to implement either StreamEntry or DestinationStream interface')
+    }
+
+    const { streams } = this
+
+    let level
+    if (typeof dest.levelVal === 'number') {
+      level = dest.levelVal
+    } else if (typeof dest.level === 'string') {
+      level = levels[dest.level]
+    } else if (typeof dest.level === 'number') {
+      level = dest.level
+    } else {
+      level = DEFAULT_INFO_LEVEL
+    }
+
+    const dest_ = {
+      stream: stream_,
+      level,
+      levelVal: undefined,
+      id: counter++
+    }
+
+    streams.unshift(dest_)
+    streams.sort(compareByLevel)
+
+    this.minLevel = streams[0].level
+
+    return res
+  }
+
+  function end () {
+    for (const { stream } of this.streams) {
+      if (typeof stream.flushSync === 'function') {
+        stream.flushSync()
+      }
+      stream.end()
+    }
+  }
+
+  function clone (level) {
+    const streams = new Array(this.streams.length)
+
+    for (let i = 0; i < streams.length; i++) {
+      streams[i] = {
+        level,
+        stream: this.streams[i].stream
+      }
+    }
+
+    return {
+      write,
+      add,
+      minLevel: level,
+      streams,
+      clone,
+      flushSync,
+      [metadata]: true
+    }
+  }
+}
+
+function compareByLevel (a, b) {
+  return a.level - b.level
+}
+
+function initLoopVar (length, dedupe) {
+  return dedupe ? length - 1 : 0
+}
+
+function adjustLoopVar (i, dedupe) {
+  return dedupe ? i - 1 : i + 1
+}
+
+function checkLoopVar (i, length, dedupe) {
+  return dedupe ? i >= 0 : i < length
+}
+
+module.exports = multistream
+
+
+/***/ }),
+
+/***/ 3779:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+/* eslint no-prototype-builtins: 0 */
+
+const { EventEmitter } = __nccwpck_require__(2361)
+const {
+  lsCacheSym,
+  levelValSym,
+  setLevelSym,
+  getLevelSym,
+  chindingsSym,
+  parsedChindingsSym,
+  mixinSym,
+  asJsonSym,
+  writeSym,
+  mixinMergeStrategySym,
+  timeSym,
+  timeSliceIndexSym,
+  streamSym,
+  serializersSym,
+  formattersSym,
+  errorKeySym,
+  useOnlyCustomLevelsSym,
+  needsMetadataGsym,
+  redactFmtSym,
+  stringifySym,
+  formatOptsSym,
+  stringifiersSym
+} = __nccwpck_require__(2232)
+const {
+  getLevel,
+  setLevel,
+  isLevelEnabled,
+  mappings,
+  initialLsCache,
+  genLsCache,
+  assertNoLevelCollisions
+} = __nccwpck_require__(8015)
+const {
+  asChindings,
+  asJson,
+  buildFormatters,
+  stringify
+} = __nccwpck_require__(8433)
+const {
+  version
+} = __nccwpck_require__(2812)
+const redaction = __nccwpck_require__(5159)
+
+// note: use of class is satirical
+// https://github.com/pinojs/pino/pull/433#pullrequestreview-127703127
+const constructor = class Pino {}
+const prototype = {
+  constructor,
+  child,
+  bindings,
+  setBindings,
+  flush,
+  isLevelEnabled,
+  version,
+  get level () { return this[getLevelSym]() },
+  set level (lvl) { this[setLevelSym](lvl) },
+  get levelVal () { return this[levelValSym] },
+  set levelVal (n) { throw Error('levelVal is read-only') },
+  [lsCacheSym]: initialLsCache,
+  [writeSym]: write,
+  [asJsonSym]: asJson,
+  [getLevelSym]: getLevel,
+  [setLevelSym]: setLevel
+}
+
+Object.setPrototypeOf(prototype, EventEmitter.prototype)
+
+// exporting and consuming the prototype object using factory pattern fixes scoping issues with getters when serializing
+module.exports = function () {
+  return Object.create(prototype)
+}
+
+const resetChildingsFormatter = bindings => bindings
+function child (bindings, options) {
+  if (!bindings) {
+    throw Error('missing bindings for child Pino')
+  }
+  options = options || {} // default options to empty object
+  const serializers = this[serializersSym]
+  const formatters = this[formattersSym]
+  const instance = Object.create(this)
+
+  if (options.hasOwnProperty('serializers') === true) {
+    instance[serializersSym] = Object.create(null)
+
+    for (const k in serializers) {
+      instance[serializersSym][k] = serializers[k]
+    }
+    const parentSymbols = Object.getOwnPropertySymbols(serializers)
+    /* eslint no-var: off */
+    for (var i = 0; i < parentSymbols.length; i++) {
+      const ks = parentSymbols[i]
+      instance[serializersSym][ks] = serializers[ks]
+    }
+
+    for (const bk in options.serializers) {
+      instance[serializersSym][bk] = options.serializers[bk]
+    }
+    const bindingsSymbols = Object.getOwnPropertySymbols(options.serializers)
+    for (var bi = 0; bi < bindingsSymbols.length; bi++) {
+      const bks = bindingsSymbols[bi]
+      instance[serializersSym][bks] = options.serializers[bks]
+    }
+  } else instance[serializersSym] = serializers
+  if (options.hasOwnProperty('formatters')) {
+    const { level, bindings: chindings, log } = options.formatters
+    instance[formattersSym] = buildFormatters(
+      level || formatters.level,
+      chindings || resetChildingsFormatter,
+      log || formatters.log
+    )
+  } else {
+    instance[formattersSym] = buildFormatters(
+      formatters.level,
+      resetChildingsFormatter,
+      formatters.log
+    )
+  }
+  if (options.hasOwnProperty('customLevels') === true) {
+    assertNoLevelCollisions(this.levels, options.customLevels)
+    instance.levels = mappings(options.customLevels, instance[useOnlyCustomLevelsSym])
+    genLsCache(instance)
+  }
+
+  // redact must place before asChindings and only replace if exist
+  if ((typeof options.redact === 'object' && options.redact !== null) || Array.isArray(options.redact)) {
+    instance.redact = options.redact // replace redact directly
+    const stringifiers = redaction(instance.redact, stringify)
+    const formatOpts = { stringify: stringifiers[redactFmtSym] }
+    instance[stringifySym] = stringify
+    instance[stringifiersSym] = stringifiers
+    instance[formatOptsSym] = formatOpts
+  }
+
+  instance[chindingsSym] = asChindings(instance, bindings)
+  const childLevel = options.level || this.level
+  instance[setLevelSym](childLevel)
+  this.onChild(instance)
+  return instance
+}
+
+function bindings () {
+  const chindings = this[chindingsSym]
+  const chindingsJson = `{${chindings.substr(1)}}` // at least contains ,"pid":7068,"hostname":"myMac"
+  const bindingsFromJson = JSON.parse(chindingsJson)
+  delete bindingsFromJson.pid
+  delete bindingsFromJson.hostname
+  return bindingsFromJson
+}
+
+function setBindings (newBindings) {
+  const chindings = asChindings(this, newBindings)
+  this[chindingsSym] = chindings
+  delete this[parsedChindingsSym]
+}
+
+/**
+ * Default strategy for creating `mergeObject` from arguments and the result from `mixin()`.
+ * Fields from `mergeObject` have higher priority in this strategy.
+ *
+ * @param {Object} mergeObject The object a user has supplied to the logging function.
+ * @param {Object} mixinObject The result of the `mixin` method.
+ * @return {Object}
+ */
+function defaultMixinMergeStrategy (mergeObject, mixinObject) {
+  return Object.assign(mixinObject, mergeObject)
+}
+
+function write (_obj, msg, num) {
+  const t = this[timeSym]()
+  const mixin = this[mixinSym]
+  const errorKey = this[errorKeySym]
+  const mixinMergeStrategy = this[mixinMergeStrategySym] || defaultMixinMergeStrategy
+  let obj
+
+  if (_obj === undefined || _obj === null) {
+    obj = {}
+  } else if (_obj instanceof Error) {
+    obj = { [errorKey]: _obj }
+    if (msg === undefined) {
+      msg = _obj.message
+    }
+  } else {
+    obj = _obj
+    if (msg === undefined && _obj[errorKey]) {
+      msg = _obj[errorKey].message
+    }
+  }
+
+  if (mixin) {
+    obj = mixinMergeStrategy(obj, mixin(obj, num))
+  }
+
+  const s = this[asJsonSym](obj, msg, num, t)
+
+  const stream = this[streamSym]
+  if (stream[needsMetadataGsym] === true) {
+    stream.lastLevel = num
+    stream.lastObj = obj
+    stream.lastMsg = msg
+    stream.lastTime = t.slice(this[timeSliceIndexSym])
+    stream.lastLogger = this // for child loggers
+  }
+  stream.write(s)
+}
+
+function noop () {}
+
+function flush () {
+  const stream = this[streamSym]
+  if ('flush' in stream) stream.flush(noop)
+}
+
+
+/***/ }),
+
+/***/ 5159:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const fastRedact = __nccwpck_require__(4826)
+const { redactFmtSym, wildcardFirstSym } = __nccwpck_require__(2232)
+const { rx, validator } = fastRedact
+
+const validate = validator({
+  ERR_PATHS_MUST_BE_STRINGS: () => 'pino – redacted paths must be strings',
+  ERR_INVALID_PATH: (s) => `pino – redact paths array contains an invalid path (${s})`
+})
+
+const CENSOR = '[Redacted]'
+const strict = false // TODO should this be configurable?
+
+function redaction (opts, serialize) {
+  const { paths, censor } = handle(opts)
+
+  const shape = paths.reduce((o, str) => {
+    rx.lastIndex = 0
+    const first = rx.exec(str)
+    const next = rx.exec(str)
+
+    // ns is the top-level path segment, brackets + quoting removed.
+    let ns = first[1] !== undefined
+      ? first[1].replace(/^(?:"|'|`)(.*)(?:"|'|`)$/, '$1')
+      : first[0]
+
+    if (ns === '*') {
+      ns = wildcardFirstSym
+    }
+
+    // top level key:
+    if (next === null) {
+      o[ns] = null
+      return o
+    }
+
+    // path with at least two segments:
+    // if ns is already redacted at the top level, ignore lower level redactions
+    if (o[ns] === null) {
+      return o
+    }
+
+    const { index } = next
+    const nextPath = `${str.substr(index, str.length - 1)}`
+
+    o[ns] = o[ns] || []
+
+    // shape is a mix of paths beginning with literal values and wildcard
+    // paths [ "a.b.c", "*.b.z" ] should reduce to a shape of
+    // { "a": [ "b.c", "b.z" ], *: [ "b.z" ] }
+    // note: "b.z" is in both "a" and * arrays because "a" matches the wildcard.
+    // (* entry has wildcardFirstSym as key)
+    if (ns !== wildcardFirstSym && o[ns].length === 0) {
+      // first time ns's get all '*' redactions so far
+      o[ns].push(...(o[wildcardFirstSym] || []))
+    }
+
+    if (ns === wildcardFirstSym) {
+      // new * path gets added to all previously registered literal ns's.
+      Object.keys(o).forEach(function (k) {
+        if (o[k]) {
+          o[k].push(nextPath)
+        }
+      })
+    }
+
+    o[ns].push(nextPath)
+    return o
+  }, {})
+
+  // the redactor assigned to the format symbol key
+  // provides top level redaction for instances where
+  // an object is interpolated into the msg string
+  const result = {
+    [redactFmtSym]: fastRedact({ paths, censor, serialize, strict })
+  }
+
+  const topCensor = (...args) => {
+    return typeof censor === 'function' ? serialize(censor(...args)) : serialize(censor)
+  }
+
+  return [...Object.keys(shape), ...Object.getOwnPropertySymbols(shape)].reduce((o, k) => {
+    // top level key:
+    if (shape[k] === null) {
+      o[k] = (value) => topCensor(value, [k])
+    } else {
+      const wrappedCensor = typeof censor === 'function'
+        ? (value, path) => {
+            return censor(value, [k, ...path])
+          }
+        : censor
+      o[k] = fastRedact({
+        paths: shape[k],
+        censor: wrappedCensor,
+        serialize,
+        strict
+      })
+    }
+    return o
+  }, result)
+}
+
+function handle (opts) {
+  if (Array.isArray(opts)) {
+    opts = { paths: opts, censor: CENSOR }
+    validate(opts)
+    return opts
+  }
+  let { paths, censor = CENSOR, remove } = opts
+  if (Array.isArray(paths) === false) { throw Error('pino – redact must contain an array of strings') }
+  if (remove === true) censor = undefined
+  validate({ paths, censor })
+
+  return { paths, censor }
+}
+
+module.exports = redaction
+
+
+/***/ }),
+
+/***/ 2232:
+/***/ ((module) => {
+
+"use strict";
+
+
+const setLevelSym = Symbol('pino.setLevel')
+const getLevelSym = Symbol('pino.getLevel')
+const levelValSym = Symbol('pino.levelVal')
+const useLevelLabelsSym = Symbol('pino.useLevelLabels')
+const useOnlyCustomLevelsSym = Symbol('pino.useOnlyCustomLevels')
+const mixinSym = Symbol('pino.mixin')
+
+const lsCacheSym = Symbol('pino.lsCache')
+const chindingsSym = Symbol('pino.chindings')
+
+const asJsonSym = Symbol('pino.asJson')
+const writeSym = Symbol('pino.write')
+const redactFmtSym = Symbol('pino.redactFmt')
+
+const timeSym = Symbol('pino.time')
+const timeSliceIndexSym = Symbol('pino.timeSliceIndex')
+const streamSym = Symbol('pino.stream')
+const stringifySym = Symbol('pino.stringify')
+const stringifySafeSym = Symbol('pino.stringifySafe')
+const stringifiersSym = Symbol('pino.stringifiers')
+const endSym = Symbol('pino.end')
+const formatOptsSym = Symbol('pino.formatOpts')
+const messageKeySym = Symbol('pino.messageKey')
+const errorKeySym = Symbol('pino.errorKey')
+const nestedKeySym = Symbol('pino.nestedKey')
+const nestedKeyStrSym = Symbol('pino.nestedKeyStr')
+const mixinMergeStrategySym = Symbol('pino.mixinMergeStrategy')
+
+const wildcardFirstSym = Symbol('pino.wildcardFirst')
+
+// public symbols, no need to use the same pino
+// version for these
+const serializersSym = Symbol.for('pino.serializers')
+const formattersSym = Symbol.for('pino.formatters')
+const hooksSym = Symbol.for('pino.hooks')
+const needsMetadataGsym = Symbol.for('pino.metadata')
+
+module.exports = {
+  setLevelSym,
+  getLevelSym,
+  levelValSym,
+  useLevelLabelsSym,
+  mixinSym,
+  lsCacheSym,
+  chindingsSym,
+  asJsonSym,
+  writeSym,
+  serializersSym,
+  redactFmtSym,
+  timeSym,
+  timeSliceIndexSym,
+  streamSym,
+  stringifySym,
+  stringifySafeSym,
+  stringifiersSym,
+  endSym,
+  formatOptsSym,
+  messageKeySym,
+  errorKeySym,
+  nestedKeySym,
+  wildcardFirstSym,
+  needsMetadataGsym,
+  useOnlyCustomLevelsSym,
+  formattersSym,
+  hooksSym,
+  nestedKeyStrSym,
+  mixinMergeStrategySym
+}
+
+
+/***/ }),
+
+/***/ 857:
+/***/ ((module) => {
+
+"use strict";
+
+
+const nullTime = () => ''
+
+const epochTime = () => `,"time":${Date.now()}`
+
+const unixTime = () => `,"time":${Math.round(Date.now() / 1000.0)}`
+
+const isoTime = () => `,"time":"${new Date(Date.now()).toISOString()}"` // using Date.now() for testability
+
+module.exports = { nullTime, epochTime, unixTime, isoTime }
+
+
+/***/ }),
+
+/***/ 8433:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+/* eslint no-prototype-builtins: 0 */
+
+const format = __nccwpck_require__(5933)
+const { mapHttpRequest, mapHttpResponse } = __nccwpck_require__(5848)
+const SonicBoom = __nccwpck_require__(330)
+const onExit = __nccwpck_require__(9660)
+const {
+  lsCacheSym,
+  chindingsSym,
+  writeSym,
+  serializersSym,
+  formatOptsSym,
+  endSym,
+  stringifiersSym,
+  stringifySym,
+  stringifySafeSym,
+  wildcardFirstSym,
+  nestedKeySym,
+  formattersSym,
+  messageKeySym,
+  nestedKeyStrSym
+} = __nccwpck_require__(2232)
+const { isMainThread } = __nccwpck_require__(1267)
+const transport = __nccwpck_require__(6129)
+
+function noop () {}
+
+function genLog (level, hook) {
+  if (!hook) return LOG
+
+  return function hookWrappedLog (...args) {
+    hook.call(this, args, LOG, level)
+  }
+
+  function LOG (o, ...n) {
+    if (typeof o === 'object') {
+      let msg = o
+      if (o !== null) {
+        if (o.method && o.headers && o.socket) {
+          o = mapHttpRequest(o)
+        } else if (typeof o.setHeader === 'function') {
+          o = mapHttpResponse(o)
+        }
+      }
+      let formatParams
+      if (msg === null && n.length === 0) {
+        formatParams = [null]
+      } else {
+        msg = n.shift()
+        formatParams = n
+      }
+      this[writeSym](o, format(msg, formatParams, this[formatOptsSym]), level)
+    } else {
+      this[writeSym](null, format(o === undefined ? n.shift() : o, n, this[formatOptsSym]), level)
+    }
+  }
+}
+
+// magically escape strings for json
+// relying on their charCodeAt
+// everything below 32 needs JSON.stringify()
+// 34 and 92 happens all the time, so we
+// have a fast case for them
+function asString (str) {
+  let result = ''
+  let last = 0
+  let found = false
+  let point = 255
+  const l = str.length
+  if (l > 100) {
+    return JSON.stringify(str)
+  }
+  for (var i = 0; i < l && point >= 32; i++) {
+    point = str.charCodeAt(i)
+    if (point === 34 || point === 92) {
+      result += str.slice(last, i) + '\\'
+      last = i
+      found = true
+    }
+  }
+  if (!found) {
+    result = str
+  } else {
+    result += str.slice(last)
+  }
+  return point < 32 ? JSON.stringify(str) : '"' + result + '"'
+}
+
+function asJson (obj, msg, num, time) {
+  const stringify = this[stringifySym]
+  const stringifySafe = this[stringifySafeSym]
+  const stringifiers = this[stringifiersSym]
+  const end = this[endSym]
+  const chindings = this[chindingsSym]
+  const serializers = this[serializersSym]
+  const formatters = this[formattersSym]
+  const messageKey = this[messageKeySym]
+  let data = this[lsCacheSym][num] + time
+
+  // we need the child bindings added to the output first so instance logged
+  // objects can take precedence when JSON.parse-ing the resulting log line
+  data = data + chindings
+
+  let value
+  if (formatters.log) {
+    obj = formatters.log(obj)
+  }
+  const wildcardStringifier = stringifiers[wildcardFirstSym]
+  let propStr = ''
+  for (const key in obj) {
+    value = obj[key]
+    if (Object.prototype.hasOwnProperty.call(obj, key) && value !== undefined) {
+      value = serializers[key] ? serializers[key](value) : value
+
+      const stringifier = stringifiers[key] || wildcardStringifier
+
+      switch (typeof value) {
+        case 'undefined':
+        case 'function':
+          continue
+        case 'number':
+          /* eslint no-fallthrough: "off" */
+          if (Number.isFinite(value) === false) {
+            value = null
+          }
+        // this case explicitly falls through to the next one
+        case 'boolean':
+          if (stringifier) value = stringifier(value)
+          break
+        case 'string':
+          value = (stringifier || asString)(value)
+          break
+        default:
+          value = (stringifier || stringify)(value, stringifySafe)
+      }
+      if (value === undefined) continue
+      propStr += ',"' + key + '":' + value
+    }
+  }
+
+  let msgStr = ''
+  if (msg !== undefined) {
+    value = serializers[messageKey] ? serializers[messageKey](msg) : msg
+    const stringifier = stringifiers[messageKey] || wildcardStringifier
+
+    switch (typeof value) {
+      case 'function':
+        break
+      case 'number':
+        /* eslint no-fallthrough: "off" */
+        if (Number.isFinite(value) === false) {
+          value = null
+        }
+      // this case explicitly falls through to the next one
+      case 'boolean':
+        if (stringifier) value = stringifier(value)
+        msgStr = ',"' + messageKey + '":' + value
+        break
+      case 'string':
+        value = (stringifier || asString)(value)
+        msgStr = ',"' + messageKey + '":' + value
+        break
+      default:
+        value = (stringifier || stringify)(value, stringifySafe)
+        msgStr = ',"' + messageKey + '":' + value
+    }
+  }
+
+  if (this[nestedKeySym] && propStr) {
+    // place all the obj properties under the specified key
+    // the nested key is already formatted from the constructor
+    return data + this[nestedKeyStrSym] + propStr.slice(1) + '}' + msgStr + end
+  } else {
+    return data + propStr + msgStr + end
+  }
+}
+
+function asChindings (instance, bindings) {
+  let value
+  let data = instance[chindingsSym]
+  const stringify = instance[stringifySym]
+  const stringifySafe = instance[stringifySafeSym]
+  const stringifiers = instance[stringifiersSym]
+  const wildcardStringifier = stringifiers[wildcardFirstSym]
+  const serializers = instance[serializersSym]
+  const formatter = instance[formattersSym].bindings
+  bindings = formatter(bindings)
+
+  for (const key in bindings) {
+    value = bindings[key]
+    const valid = key !== 'level' &&
+      key !== 'serializers' &&
+      key !== 'formatters' &&
+      key !== 'customLevels' &&
+      bindings.hasOwnProperty(key) &&
+      value !== undefined
+    if (valid === true) {
+      value = serializers[key] ? serializers[key](value) : value
+      value = (stringifiers[key] || wildcardStringifier || stringify)(value, stringifySafe)
+      if (value === undefined) continue
+      data += ',"' + key + '":' + value
+    }
+  }
+  return data
+}
+
+function hasBeenTampered (stream) {
+  return stream.write !== stream.constructor.prototype.write
+}
+
+function buildSafeSonicBoom (opts) {
+  const stream = new SonicBoom(opts)
+  stream.on('error', filterBrokenPipe)
+  // if we are sync: false, we must flush on exit
+  if (!opts.sync && isMainThread) {
+    onExit.register(stream, autoEnd)
+
+    stream.on('close', function () {
+      onExit.unregister(stream)
+    })
+  }
+  return stream
+
+  function filterBrokenPipe (err) {
+    // Impossible to replicate across all operating systems
+    /* istanbul ignore next */
+    if (err.code === 'EPIPE') {
+      // If we get EPIPE, we should stop logging here
+      // however we have no control to the consumer of
+      // SonicBoom, so we just overwrite the write method
+      stream.write = noop
+      stream.end = noop
+      stream.flushSync = noop
+      stream.destroy = noop
+      return
+    }
+    stream.removeListener('error', filterBrokenPipe)
+    stream.emit('error', err)
+  }
+}
+
+function autoEnd (stream, eventName) {
+  // This check is needed only on some platforms
+  /* istanbul ignore next */
+  if (stream.destroyed) {
+    return
+  }
+
+  if (eventName === 'beforeExit') {
+    // We still have an event loop, let's use it
+    stream.flush()
+    stream.on('drain', function () {
+      stream.end()
+    })
+  } else {
+    // For some reason istanbul is not detecting this, but it's there
+    /* istanbul ignore next */
+    // We do not have an event loop, so flush synchronously
+    stream.flushSync()
+  }
+}
+
+function createArgsNormalizer (defaultOptions) {
+  return function normalizeArgs (instance, caller, opts = {}, stream) {
+    // support stream as a string
+    if (typeof opts === 'string') {
+      stream = buildSafeSonicBoom({ dest: opts })
+      opts = {}
+    } else if (typeof stream === 'string') {
+      if (opts && opts.transport) {
+        throw Error('only one of option.transport or stream can be specified')
+      }
+      stream = buildSafeSonicBoom({ dest: stream })
+    } else if (opts instanceof SonicBoom || opts.writable || opts._writableState) {
+      stream = opts
+      opts = {}
+    } else if (opts.transport) {
+      if (opts.transport instanceof SonicBoom || opts.transport.writable || opts.transport._writableState) {
+        throw Error('option.transport do not allow stream, please pass to option directly. e.g. pino(transport)')
+      }
+      if (opts.transport.targets && opts.transport.targets.length && opts.formatters && typeof opts.formatters.level === 'function') {
+        throw Error('option.transport.targets do not allow custom level formatters')
+      }
+
+      let customLevels
+      if (opts.customLevels) {
+        customLevels = opts.useOnlyCustomLevels ? opts.customLevels : Object.assign({}, opts.levels, opts.customLevels)
+      }
+      stream = transport({ caller, ...opts.transport, levels: customLevels })
+    }
+    opts = Object.assign({}, defaultOptions, opts)
+    opts.serializers = Object.assign({}, defaultOptions.serializers, opts.serializers)
+    opts.formatters = Object.assign({}, defaultOptions.formatters, opts.formatters)
+
+    if (opts.prettyPrint) {
+      throw new Error('prettyPrint option is no longer supported, see the pino-pretty package (https://github.com/pinojs/pino-pretty)')
+    }
+
+    const { enabled, onChild } = opts
+    if (enabled === false) opts.level = 'silent'
+    if (!onChild) opts.onChild = noop
+    if (!stream) {
+      if (!hasBeenTampered(process.stdout)) {
+        // If process.stdout.fd is undefined, it means that we are running
+        // in a worker thread. Let's assume we are logging to file descriptor 1.
+        stream = buildSafeSonicBoom({ fd: process.stdout.fd || 1 })
+      } else {
+        stream = process.stdout
+      }
+    }
+    return { opts, stream }
+  }
+}
+
+function stringify (obj, stringifySafeFn) {
+  try {
+    return JSON.stringify(obj)
+  } catch (_) {
+    try {
+      const stringify = stringifySafeFn || this[stringifySafeSym]
+      return stringify(obj)
+    } catch (_) {
+      return '"[unable to serialize, circular reference is too complex to analyze]"'
+    }
+  }
+}
+
+function buildFormatters (level, bindings, log) {
+  return {
+    level,
+    bindings,
+    log
+  }
+}
+
+/**
+ * Convert a string integer file descriptor to a proper native integer
+ * file descriptor.
+ *
+ * @param {string} destination The file descriptor string to attempt to convert.
+ *
+ * @returns {Number}
+ */
+function normalizeDestFileDescriptor (destination) {
+  const fd = Number(destination)
+  if (typeof destination === 'string' && Number.isFinite(fd)) {
+    return fd
+  }
+  // destination could be undefined if we are in a worker
+  if (destination === undefined) {
+    // This is stdout in UNIX systems
+    return 1
+  }
+  return destination
+}
+
+module.exports = {
+  noop,
+  buildSafeSonicBoom,
+  asChindings,
+  asJson,
+  genLog,
+  createArgsNormalizer,
+  stringify,
+  buildFormatters,
+  normalizeDestFileDescriptor
+}
+
+
+/***/ }),
+
+/***/ 6129:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const { createRequire } = __nccwpck_require__(8188)
+const getCallers = __nccwpck_require__(3588)
+const { join, isAbsolute } = __nccwpck_require__(1017)
+const sleep = __nccwpck_require__(6950)
+const onExit = __nccwpck_require__(9660)
+const ThreadStream = __nccwpck_require__(8366)
+
+function setupOnExit (stream) {
+  // This is leak free, it does not leave event handlers
+  onExit.register(stream, autoEnd)
+  onExit.registerBeforeExit(stream, flush)
+
+  stream.on('close', function () {
+    onExit.unregister(stream)
+  })
+}
+
+function buildStream (filename, workerData, workerOpts) {
+  const stream = new ThreadStream({
+    filename,
+    workerData,
+    workerOpts
+  })
+
+  stream.on('ready', onReady)
+  stream.on('close', function () {
+    process.removeListener('exit', onExit)
+  })
+
+  process.on('exit', onExit)
+
+  function onReady () {
+    process.removeListener('exit', onExit)
+    stream.unref()
+
+    if (workerOpts.autoEnd !== false) {
+      setupOnExit(stream)
+    }
+  }
+
+  function onExit () {
+    /* istanbul ignore next */
+    if (stream.closed) {
+      return
+    }
+    stream.flushSync()
+    // Apparently there is a very sporadic race condition
+    // that in certain OS would prevent the messages to be flushed
+    // because the thread might not have been created still.
+    // Unfortunately we need to sleep(100) in this case.
+    sleep(100)
+    stream.end()
+  }
+
+  return stream
+}
+
+function autoEnd (stream) {
+  stream.ref()
+  stream.flushSync()
+  stream.end()
+  stream.once('close', function () {
+    stream.unref()
+  })
+}
+
+function flush (stream) {
+  stream.flushSync()
+}
+
+function transport (fullOptions) {
+  const { pipeline, targets, levels, options = {}, worker = {}, caller = getCallers() } = fullOptions
+
+  // Backwards compatibility
+  const callers = typeof caller === 'string' ? [caller] : caller
+
+  // This will be eventually modified by bundlers
+  const bundlerOverrides = '__bundlerPathsOverrides' in globalThis ? globalThis.__bundlerPathsOverrides : {}
+
+  let target = fullOptions.target
+
+  if (target && targets) {
+    throw new Error('only one of target or targets can be specified')
+  }
+
+  if (targets) {
+    target = bundlerOverrides['pino-worker'] || __nccwpck_require__.ab + "worker.js"
+    options.targets = targets.map((dest) => {
+      return {
+        ...dest,
+        target: fixTarget(dest.target)
+      }
+    })
+  } else if (pipeline) {
+    target = bundlerOverrides['pino-pipeline-worker'] || __nccwpck_require__.ab + "worker-pipeline.js"
+    options.targets = pipeline.map((dest) => {
+      return {
+        ...dest,
+        target: fixTarget(dest.target)
+      }
+    })
+  }
+
+  if (levels) {
+    options.levels = levels
+  }
+
+  return buildStream(fixTarget(target), options, worker)
+
+  function fixTarget (origin) {
+    origin = bundlerOverrides[origin] || origin
+
+    if (isAbsolute(origin) || origin.indexOf('file://') === 0) {
+      return origin
+    }
+
+    if (origin === 'pino/file') {
+      return __nccwpck_require__.ab + "file.js"
+    }
+
+    let fixTarget
+
+    for (const filePath of callers) {
+      try {
+        fixTarget = createRequire(filePath).resolve(origin)
+        break
+      } catch (err) {
+        // Silent catch
+        continue
+      }
+    }
+
+    if (!fixTarget) {
+      throw new Error(`unable to determine transport target for "${origin}"`)
+    }
+
+    return fixTarget
+  }
+}
+
+module.exports = transport
+
+
+/***/ }),
+
+/***/ 8085:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+/* eslint no-prototype-builtins: 0 */
+const os = __nccwpck_require__(2037)
+const stdSerializers = __nccwpck_require__(5848)
+const caller = __nccwpck_require__(3588)
+const redaction = __nccwpck_require__(5159)
+const time = __nccwpck_require__(857)
+const proto = __nccwpck_require__(3779)
+const symbols = __nccwpck_require__(2232)
+const { configure } = __nccwpck_require__(7560)
+const { assertDefaultLevelFound, mappings, genLsCache, levels } = __nccwpck_require__(8015)
+const {
+  createArgsNormalizer,
+  asChindings,
+  buildSafeSonicBoom,
+  buildFormatters,
+  stringify,
+  normalizeDestFileDescriptor,
+  noop
+} = __nccwpck_require__(8433)
+const { version } = __nccwpck_require__(2812)
+const {
+  chindingsSym,
+  redactFmtSym,
+  serializersSym,
+  timeSym,
+  timeSliceIndexSym,
+  streamSym,
+  stringifySym,
+  stringifySafeSym,
+  stringifiersSym,
+  setLevelSym,
+  endSym,
+  formatOptsSym,
+  messageKeySym,
+  errorKeySym,
+  nestedKeySym,
+  mixinSym,
+  useOnlyCustomLevelsSym,
+  formattersSym,
+  hooksSym,
+  nestedKeyStrSym,
+  mixinMergeStrategySym
+} = symbols
+const { epochTime, nullTime } = time
+const { pid } = process
+const hostname = os.hostname()
+const defaultErrorSerializer = stdSerializers.err
+const defaultOptions = {
+  level: 'info',
+  levels,
+  messageKey: 'msg',
+  errorKey: 'err',
+  nestedKey: null,
+  enabled: true,
+  base: { pid, hostname },
+  serializers: Object.assign(Object.create(null), {
+    err: defaultErrorSerializer
+  }),
+  formatters: Object.assign(Object.create(null), {
+    bindings (bindings) {
+      return bindings
+    },
+    level (label, number) {
+      return { level: number }
+    }
+  }),
+  hooks: {
+    logMethod: undefined
+  },
+  timestamp: epochTime,
+  name: undefined,
+  redact: null,
+  customLevels: null,
+  useOnlyCustomLevels: false,
+  depthLimit: 5,
+  edgeLimit: 100
+}
+
+const normalize = createArgsNormalizer(defaultOptions)
+
+const serializers = Object.assign(Object.create(null), stdSerializers)
+
+function pino (...args) {
+  const instance = {}
+  const { opts, stream } = normalize(instance, caller(), ...args)
+  const {
+    redact,
+    crlf,
+    serializers,
+    timestamp,
+    messageKey,
+    errorKey,
+    nestedKey,
+    base,
+    name,
+    level,
+    customLevels,
+    mixin,
+    mixinMergeStrategy,
+    useOnlyCustomLevels,
+    formatters,
+    hooks,
+    depthLimit,
+    edgeLimit,
+    onChild
+  } = opts
+
+  const stringifySafe = configure({
+    maximumDepth: depthLimit,
+    maximumBreadth: edgeLimit
+  })
+
+  const allFormatters = buildFormatters(
+    formatters.level,
+    formatters.bindings,
+    formatters.log
+  )
+
+  const stringifiers = redact ? redaction(redact, stringify) : {}
+  const stringifyFn = stringify.bind({
+    [stringifySafeSym]: stringifySafe
+  })
+  const formatOpts = redact
+    ? { stringify: stringifiers[redactFmtSym] }
+    : { stringify: stringifyFn }
+  const end = '}' + (crlf ? '\r\n' : '\n')
+  const coreChindings = asChindings.bind(null, {
+    [chindingsSym]: '',
+    [serializersSym]: serializers,
+    [stringifiersSym]: stringifiers,
+    [stringifySym]: stringify,
+    [stringifySafeSym]: stringifySafe,
+    [formattersSym]: allFormatters
+  })
+
+  let chindings = ''
+  if (base !== null) {
+    if (name === undefined) {
+      chindings = coreChindings(base)
+    } else {
+      chindings = coreChindings(Object.assign({}, base, { name }))
+    }
+  }
+
+  const time = (timestamp instanceof Function)
+    ? timestamp
+    : (timestamp ? epochTime : nullTime)
+  const timeSliceIndex = time().indexOf(':') + 1
+
+  if (useOnlyCustomLevels && !customLevels) throw Error('customLevels is required if useOnlyCustomLevels is set true')
+  if (mixin && typeof mixin !== 'function') throw Error(`Unknown mixin type "${typeof mixin}" - expected "function"`)
+
+  assertDefaultLevelFound(level, customLevels, useOnlyCustomLevels)
+  const levels = mappings(customLevels, useOnlyCustomLevels)
+
+  Object.assign(instance, {
+    levels,
+    [useOnlyCustomLevelsSym]: useOnlyCustomLevels,
+    [streamSym]: stream,
+    [timeSym]: time,
+    [timeSliceIndexSym]: timeSliceIndex,
+    [stringifySym]: stringify,
+    [stringifySafeSym]: stringifySafe,
+    [stringifiersSym]: stringifiers,
+    [endSym]: end,
+    [formatOptsSym]: formatOpts,
+    [messageKeySym]: messageKey,
+    [errorKeySym]: errorKey,
+    [nestedKeySym]: nestedKey,
+    // protect against injection
+    [nestedKeyStrSym]: nestedKey ? `,${JSON.stringify(nestedKey)}:{` : '',
+    [serializersSym]: serializers,
+    [mixinSym]: mixin,
+    [mixinMergeStrategySym]: mixinMergeStrategy,
+    [chindingsSym]: chindings,
+    [formattersSym]: allFormatters,
+    [hooksSym]: hooks,
+    silent: noop,
+    onChild
+  })
+
+  Object.setPrototypeOf(instance, proto())
+
+  genLsCache(instance)
+
+  instance[setLevelSym](level)
+
+  return instance
+}
+
+module.exports = pino
+
+module.exports.destination = (dest = process.stdout.fd) => {
+  if (typeof dest === 'object') {
+    dest.dest = normalizeDestFileDescriptor(dest.dest || process.stdout.fd)
+    return buildSafeSonicBoom(dest)
+  } else {
+    return buildSafeSonicBoom({ dest: normalizeDestFileDescriptor(dest), minLength: 0 })
+  }
+}
+
+module.exports.transport = __nccwpck_require__(6129)
+module.exports.multistream = __nccwpck_require__(4411)
+
+module.exports.levels = mappings()
+module.exports.stdSerializers = serializers
+module.exports.stdTimeFunctions = Object.assign({}, time)
+module.exports.symbols = symbols
+module.exports.version = version
+
+// Enables default and name export with TypeScript and Babel
+module.exports["default"] = pino
+module.exports.pino = pino
+
+
+/***/ }),
+
+/***/ 330:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const fs = __nccwpck_require__(7147)
+const EventEmitter = __nccwpck_require__(2361)
+const inherits = (__nccwpck_require__(3837).inherits)
+const path = __nccwpck_require__(1017)
+const sleep = __nccwpck_require__(6950)
+
+const BUSY_WRITE_TIMEOUT = 100
+
+// 16 KB. Don't write more than docker buffer size.
+// https://github.com/moby/moby/blob/513ec73831269947d38a644c278ce3cac36783b2/daemon/logger/copier.go#L13
+const MAX_WRITE = 16 * 1024
+
+function openFile (file, sonic) {
+  sonic._opening = true
+  sonic._writing = true
+  sonic._asyncDrainScheduled = false
+
+  // NOTE: 'error' and 'ready' events emitted below only relevant when sonic.sync===false
+  // for sync mode, there is no way to add a listener that will receive these
+
+  function fileOpened (err, fd) {
+    if (err) {
+      sonic._reopening = false
+      sonic._writing = false
+      sonic._opening = false
+
+      if (sonic.sync) {
+        process.nextTick(() => {
+          if (sonic.listenerCount('error') > 0) {
+            sonic.emit('error', err)
+          }
+        })
+      } else {
+        sonic.emit('error', err)
+      }
+      return
+    }
+
+    sonic.fd = fd
+    sonic.file = file
+    sonic._reopening = false
+    sonic._opening = false
+    sonic._writing = false
+
+    if (sonic.sync) {
+      process.nextTick(() => sonic.emit('ready'))
+    } else {
+      sonic.emit('ready')
+    }
+
+    if (sonic._reopening) {
+      return
+    }
+
+    // start
+    if (!sonic._writing && sonic._len > sonic.minLength && !sonic.destroyed) {
+      actualWrite(sonic)
+    }
+  }
+
+  const flags = sonic.append ? 'a' : 'w'
+  const mode = sonic.mode
+
+  if (sonic.sync) {
+    try {
+      if (sonic.mkdir) fs.mkdirSync(path.dirname(file), { recursive: true })
+      const fd = fs.openSync(file, flags, mode)
+      fileOpened(null, fd)
+    } catch (err) {
+      fileOpened(err)
+      throw err
+    }
+  } else if (sonic.mkdir) {
+    fs.mkdir(path.dirname(file), { recursive: true }, (err) => {
+      if (err) return fileOpened(err)
+      fs.open(file, flags, mode, fileOpened)
+    })
+  } else {
+    fs.open(file, flags, mode, fileOpened)
+  }
+}
+
+function SonicBoom (opts) {
+  if (!(this instanceof SonicBoom)) {
+    return new SonicBoom(opts)
+  }
+
+  let { fd, dest, minLength, maxLength, maxWrite, sync, append = true, mode, mkdir, retryEAGAIN, fsync } = opts || {}
+
+  fd = fd || dest
+
+  this._bufs = []
+  this._len = 0
+  this.fd = -1
+  this._writing = false
+  this._writingBuf = ''
+  this._ending = false
+  this._reopening = false
+  this._asyncDrainScheduled = false
+  this._hwm = Math.max(minLength || 0, 16387)
+  this.file = null
+  this.destroyed = false
+  this.minLength = minLength || 0
+  this.maxLength = maxLength || 0
+  this.maxWrite = maxWrite || MAX_WRITE
+  this.sync = sync || false
+  this._fsync = fsync || false
+  this.append = append || false
+  this.mode = mode
+  this.retryEAGAIN = retryEAGAIN || (() => true)
+  this.mkdir = mkdir || false
+
+  if (typeof fd === 'number') {
+    this.fd = fd
+    process.nextTick(() => this.emit('ready'))
+  } else if (typeof fd === 'string') {
+    openFile(fd, this)
+  } else {
+    throw new Error('SonicBoom supports only file descriptors and files')
+  }
+  if (this.minLength >= this.maxWrite) {
+    throw new Error(`minLength should be smaller than maxWrite (${this.maxWrite})`)
+  }
+
+  this.release = (err, n) => {
+    if (err) {
+      if (err.code === 'EAGAIN' && this.retryEAGAIN(err, this._writingBuf.length, this._len - this._writingBuf.length)) {
+        if (this.sync) {
+          // This error code should not happen in sync mode, because it is
+          // not using the underlining operating system asynchronous functions.
+          // However it happens, and so we handle it.
+          // Ref: https://github.com/pinojs/pino/issues/783
+          try {
+            sleep(BUSY_WRITE_TIMEOUT)
+            this.release(undefined, 0)
+          } catch (err) {
+            this.release(err)
+          }
+        } else {
+          // Let's give the destination some time to process the chunk.
+          setTimeout(() => {
+            fs.write(this.fd, this._writingBuf, 'utf8', this.release)
+          }, BUSY_WRITE_TIMEOUT)
+        }
+      } else {
+        this._writing = false
+
+        this.emit('error', err)
+      }
+      return
+    }
+
+    this.emit('write', n)
+
+    this._len -= n
+    // In case of multi-byte characters, the length of the written buffer
+    // may be different from the length of the string. Let's make sure
+    // we do not have an accumulated string with a negative length.
+    // This also mean that ._len is not precise, but it's not a problem as some
+    // writes might be triggered earlier than ._minLength.
+    if (this._len < 0) {
+      this._len = 0
+    }
+
+    // TODO if we have a multi-byte character in the buffer, we need to
+    // n might not be the same as this._writingBuf.length, so we might loose
+    // characters here. The solution to this problem is to use a Buffer for _writingBuf.
+    this._writingBuf = this._writingBuf.slice(n)
+
+    if (this._writingBuf.length) {
+      if (!this.sync) {
+        fs.write(this.fd, this._writingBuf, 'utf8', this.release)
+        return
+      }
+
+      try {
+        do {
+          const n = fs.writeSync(this.fd, this._writingBuf, 'utf8')
+          this._len -= n
+          this._writingBuf = this._writingBuf.slice(n)
+        } while (this._writingBuf)
+      } catch (err) {
+        this.release(err)
+        return
+      }
+    }
+
+    if (this._fsync) {
+      fs.fsyncSync(this.fd)
+    }
+
+    const len = this._len
+    if (this._reopening) {
+      this._writing = false
+      this._reopening = false
+      this.reopen()
+    } else if (len > this.minLength) {
+      actualWrite(this)
+    } else if (this._ending) {
+      if (len > 0) {
+        actualWrite(this)
+      } else {
+        this._writing = false
+        actualClose(this)
+      }
+    } else {
+      this._writing = false
+      if (this.sync) {
+        if (!this._asyncDrainScheduled) {
+          this._asyncDrainScheduled = true
+          process.nextTick(emitDrain, this)
+        }
+      } else {
+        this.emit('drain')
+      }
+    }
+  }
+
+  this.on('newListener', function (name) {
+    if (name === 'drain') {
+      this._asyncDrainScheduled = false
+    }
+  })
+}
+
+function emitDrain (sonic) {
+  const hasListeners = sonic.listenerCount('drain') > 0
+  if (!hasListeners) return
+  sonic._asyncDrainScheduled = false
+  sonic.emit('drain')
+}
+
+inherits(SonicBoom, EventEmitter)
+
+SonicBoom.prototype.write = function (data) {
+  if (this.destroyed) {
+    throw new Error('SonicBoom destroyed')
+  }
+
+  const len = this._len + data.length
+  const bufs = this._bufs
+
+  if (this.maxLength && len > this.maxLength) {
+    this.emit('drop', data)
+    return this._len < this._hwm
+  }
+
+  if (
+    bufs.length === 0 ||
+    bufs[bufs.length - 1].length + data.length > this.maxWrite
+  ) {
+    bufs.push('' + data)
+  } else {
+    bufs[bufs.length - 1] += data
+  }
+
+  this._len = len
+
+  if (!this._writing && this._len >= this.minLength) {
+    actualWrite(this)
+  }
+
+  return this._len < this._hwm
+}
+
+SonicBoom.prototype.flush = function () {
+  if (this.destroyed) {
+    throw new Error('SonicBoom destroyed')
+  }
+
+  if (this._writing || this.minLength <= 0) {
+    return
+  }
+
+  if (this._bufs.length === 0) {
+    this._bufs.push('')
+  }
+
+  actualWrite(this)
+}
+
+SonicBoom.prototype.reopen = function (file) {
+  if (this.destroyed) {
+    throw new Error('SonicBoom destroyed')
+  }
+
+  if (this._opening) {
+    this.once('ready', () => {
+      this.reopen(file)
+    })
+    return
+  }
+
+  if (this._ending) {
+    return
+  }
+
+  if (!this.file) {
+    throw new Error('Unable to reopen a file descriptor, you must pass a file to SonicBoom')
+  }
+
+  this._reopening = true
+
+  if (this._writing) {
+    return
+  }
+
+  const fd = this.fd
+  this.once('ready', () => {
+    if (fd !== this.fd) {
+      fs.close(fd, (err) => {
+        if (err) {
+          return this.emit('error', err)
+        }
+      })
+    }
+  })
+
+  openFile(file || this.file, this)
+}
+
+SonicBoom.prototype.end = function () {
+  if (this.destroyed) {
+    throw new Error('SonicBoom destroyed')
+  }
+
+  if (this._opening) {
+    this.once('ready', () => {
+      this.end()
+    })
+    return
+  }
+
+  if (this._ending) {
+    return
+  }
+
+  this._ending = true
+
+  if (this._writing) {
+    return
+  }
+
+  if (this._len > 0 && this.fd >= 0) {
+    actualWrite(this)
+  } else {
+    actualClose(this)
+  }
+}
+
+SonicBoom.prototype.flushSync = function () {
+  if (this.destroyed) {
+    throw new Error('SonicBoom destroyed')
+  }
+
+  if (this.fd < 0) {
+    throw new Error('sonic boom is not ready yet')
+  }
+
+  if (!this._writing && this._writingBuf.length > 0) {
+    this._bufs.unshift(this._writingBuf)
+    this._writingBuf = ''
+  }
+
+  while (this._bufs.length) {
+    const buf = this._bufs[0]
+    try {
+      this._len -= fs.writeSync(this.fd, buf, 'utf8')
+      this._bufs.shift()
+    } catch (err) {
+      if (err.code !== 'EAGAIN' || !this.retryEAGAIN(err, buf.length, this._len - buf.length)) {
+        throw err
+      }
+
+      sleep(BUSY_WRITE_TIMEOUT)
+    }
+  }
+}
+
+SonicBoom.prototype.destroy = function () {
+  if (this.destroyed) {
+    return
+  }
+  actualClose(this)
+}
+
+function actualWrite (sonic) {
+  const release = sonic.release
+  sonic._writing = true
+  sonic._writingBuf = sonic._writingBuf || sonic._bufs.shift() || ''
+
+  if (sonic.sync) {
+    try {
+      const written = fs.writeSync(sonic.fd, sonic._writingBuf, 'utf8')
+      release(null, written)
+    } catch (err) {
+      release(err)
+    }
+  } else {
+    fs.write(sonic.fd, sonic._writingBuf, 'utf8', release)
+  }
+}
+
+function actualClose (sonic) {
+  if (sonic.fd === -1) {
+    sonic.once('ready', actualClose.bind(null, sonic))
+    return
+  }
+
+  sonic.destroyed = true
+  sonic._bufs = []
+
+  if (sonic.fd !== 1 && sonic.fd !== 2) {
+    fs.close(sonic.fd, done)
+  } else {
+    setImmediate(done)
+  }
+
+  function done (err) {
+    if (err) {
+      sonic.emit('error', err)
+      return
+    }
+
+    if (sonic._ending && !sonic._writing) {
+      sonic.emit('finish')
+    }
+    sonic.emit('close')
+  }
+}
+
+/**
+ * These export configurations enable JS and TS developers
+ * to consumer SonicBoom in whatever way best suits their needs.
+ * Some examples of supported import syntax includes:
+ * - `const SonicBoom = require('SonicBoom')`
+ * - `const { SonicBoom } = require('SonicBoom')`
+ * - `import * as SonicBoom from 'SonicBoom'`
+ * - `import { SonicBoom } from 'SonicBoom'`
+ * - `import SonicBoom from 'SonicBoom'`
+ */
+SonicBoom.SonicBoom = SonicBoom
+SonicBoom.default = SonicBoom
+module.exports = SonicBoom
+
+
+/***/ }),
+
 /***/ 3765:
 /***/ ((module) => {
 
 "use strict";
 module.exports = JSON.parse('{"application/1d-interleaved-parityfec":{"source":"iana"},"application/3gpdash-qoe-report+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/3gpp-ims+xml":{"source":"iana","compressible":true},"application/3gpphal+json":{"source":"iana","compressible":true},"application/3gpphalforms+json":{"source":"iana","compressible":true},"application/a2l":{"source":"iana"},"application/ace+cbor":{"source":"iana"},"application/activemessage":{"source":"iana"},"application/activity+json":{"source":"iana","compressible":true},"application/alto-costmap+json":{"source":"iana","compressible":true},"application/alto-costmapfilter+json":{"source":"iana","compressible":true},"application/alto-directory+json":{"source":"iana","compressible":true},"application/alto-endpointcost+json":{"source":"iana","compressible":true},"application/alto-endpointcostparams+json":{"source":"iana","compressible":true},"application/alto-endpointprop+json":{"source":"iana","compressible":true},"application/alto-endpointpropparams+json":{"source":"iana","compressible":true},"application/alto-error+json":{"source":"iana","compressible":true},"application/alto-networkmap+json":{"source":"iana","compressible":true},"application/alto-networkmapfilter+json":{"source":"iana","compressible":true},"application/alto-updatestreamcontrol+json":{"source":"iana","compressible":true},"application/alto-updatestreamparams+json":{"source":"iana","compressible":true},"application/aml":{"source":"iana"},"application/andrew-inset":{"source":"iana","extensions":["ez"]},"application/applefile":{"source":"iana"},"application/applixware":{"source":"apache","extensions":["aw"]},"application/at+jwt":{"source":"iana"},"application/atf":{"source":"iana"},"application/atfx":{"source":"iana"},"application/atom+xml":{"source":"iana","compressible":true,"extensions":["atom"]},"application/atomcat+xml":{"source":"iana","compressible":true,"extensions":["atomcat"]},"application/atomdeleted+xml":{"source":"iana","compressible":true,"extensions":["atomdeleted"]},"application/atomicmail":{"source":"iana"},"application/atomsvc+xml":{"source":"iana","compressible":true,"extensions":["atomsvc"]},"application/atsc-dwd+xml":{"source":"iana","compressible":true,"extensions":["dwd"]},"application/atsc-dynamic-event-message":{"source":"iana"},"application/atsc-held+xml":{"source":"iana","compressible":true,"extensions":["held"]},"application/atsc-rdt+json":{"source":"iana","compressible":true},"application/atsc-rsat+xml":{"source":"iana","compressible":true,"extensions":["rsat"]},"application/atxml":{"source":"iana"},"application/auth-policy+xml":{"source":"iana","compressible":true},"application/bacnet-xdd+zip":{"source":"iana","compressible":false},"application/batch-smtp":{"source":"iana"},"application/bdoc":{"compressible":false,"extensions":["bdoc"]},"application/beep+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/calendar+json":{"source":"iana","compressible":true},"application/calendar+xml":{"source":"iana","compressible":true,"extensions":["xcs"]},"application/call-completion":{"source":"iana"},"application/cals-1840":{"source":"iana"},"application/captive+json":{"source":"iana","compressible":true},"application/cbor":{"source":"iana"},"application/cbor-seq":{"source":"iana"},"application/cccex":{"source":"iana"},"application/ccmp+xml":{"source":"iana","compressible":true},"application/ccxml+xml":{"source":"iana","compressible":true,"extensions":["ccxml"]},"application/cdfx+xml":{"source":"iana","compressible":true,"extensions":["cdfx"]},"application/cdmi-capability":{"source":"iana","extensions":["cdmia"]},"application/cdmi-container":{"source":"iana","extensions":["cdmic"]},"application/cdmi-domain":{"source":"iana","extensions":["cdmid"]},"application/cdmi-object":{"source":"iana","extensions":["cdmio"]},"application/cdmi-queue":{"source":"iana","extensions":["cdmiq"]},"application/cdni":{"source":"iana"},"application/cea":{"source":"iana"},"application/cea-2018+xml":{"source":"iana","compressible":true},"application/cellml+xml":{"source":"iana","compressible":true},"application/cfw":{"source":"iana"},"application/city+json":{"source":"iana","compressible":true},"application/clr":{"source":"iana"},"application/clue+xml":{"source":"iana","compressible":true},"application/clue_info+xml":{"source":"iana","compressible":true},"application/cms":{"source":"iana"},"application/cnrp+xml":{"source":"iana","compressible":true},"application/coap-group+json":{"source":"iana","compressible":true},"application/coap-payload":{"source":"iana"},"application/commonground":{"source":"iana"},"application/conference-info+xml":{"source":"iana","compressible":true},"application/cose":{"source":"iana"},"application/cose-key":{"source":"iana"},"application/cose-key-set":{"source":"iana"},"application/cpl+xml":{"source":"iana","compressible":true,"extensions":["cpl"]},"application/csrattrs":{"source":"iana"},"application/csta+xml":{"source":"iana","compressible":true},"application/cstadata+xml":{"source":"iana","compressible":true},"application/csvm+json":{"source":"iana","compressible":true},"application/cu-seeme":{"source":"apache","extensions":["cu"]},"application/cwt":{"source":"iana"},"application/cybercash":{"source":"iana"},"application/dart":{"compressible":true},"application/dash+xml":{"source":"iana","compressible":true,"extensions":["mpd"]},"application/dash-patch+xml":{"source":"iana","compressible":true,"extensions":["mpp"]},"application/dashdelta":{"source":"iana"},"application/davmount+xml":{"source":"iana","compressible":true,"extensions":["davmount"]},"application/dca-rft":{"source":"iana"},"application/dcd":{"source":"iana"},"application/dec-dx":{"source":"iana"},"application/dialog-info+xml":{"source":"iana","compressible":true},"application/dicom":{"source":"iana"},"application/dicom+json":{"source":"iana","compressible":true},"application/dicom+xml":{"source":"iana","compressible":true},"application/dii":{"source":"iana"},"application/dit":{"source":"iana"},"application/dns":{"source":"iana"},"application/dns+json":{"source":"iana","compressible":true},"application/dns-message":{"source":"iana"},"application/docbook+xml":{"source":"apache","compressible":true,"extensions":["dbk"]},"application/dots+cbor":{"source":"iana"},"application/dskpp+xml":{"source":"iana","compressible":true},"application/dssc+der":{"source":"iana","extensions":["dssc"]},"application/dssc+xml":{"source":"iana","compressible":true,"extensions":["xdssc"]},"application/dvcs":{"source":"iana"},"application/ecmascript":{"source":"iana","compressible":true,"extensions":["es","ecma"]},"application/edi-consent":{"source":"iana"},"application/edi-x12":{"source":"iana","compressible":false},"application/edifact":{"source":"iana","compressible":false},"application/efi":{"source":"iana"},"application/elm+json":{"source":"iana","charset":"UTF-8","compressible":true},"application/elm+xml":{"source":"iana","compressible":true},"application/emergencycalldata.cap+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/emergencycalldata.comment+xml":{"source":"iana","compressible":true},"application/emergencycalldata.control+xml":{"source":"iana","compressible":true},"application/emergencycalldata.deviceinfo+xml":{"source":"iana","compressible":true},"application/emergencycalldata.ecall.msd":{"source":"iana"},"application/emergencycalldata.providerinfo+xml":{"source":"iana","compressible":true},"application/emergencycalldata.serviceinfo+xml":{"source":"iana","compressible":true},"application/emergencycalldata.subscriberinfo+xml":{"source":"iana","compressible":true},"application/emergencycalldata.veds+xml":{"source":"iana","compressible":true},"application/emma+xml":{"source":"iana","compressible":true,"extensions":["emma"]},"application/emotionml+xml":{"source":"iana","compressible":true,"extensions":["emotionml"]},"application/encaprtp":{"source":"iana"},"application/epp+xml":{"source":"iana","compressible":true},"application/epub+zip":{"source":"iana","compressible":false,"extensions":["epub"]},"application/eshop":{"source":"iana"},"application/exi":{"source":"iana","extensions":["exi"]},"application/expect-ct-report+json":{"source":"iana","compressible":true},"application/express":{"source":"iana","extensions":["exp"]},"application/fastinfoset":{"source":"iana"},"application/fastsoap":{"source":"iana"},"application/fdt+xml":{"source":"iana","compressible":true,"extensions":["fdt"]},"application/fhir+json":{"source":"iana","charset":"UTF-8","compressible":true},"application/fhir+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/fido.trusted-apps+json":{"compressible":true},"application/fits":{"source":"iana"},"application/flexfec":{"source":"iana"},"application/font-sfnt":{"source":"iana"},"application/font-tdpfr":{"source":"iana","extensions":["pfr"]},"application/font-woff":{"source":"iana","compressible":false},"application/framework-attributes+xml":{"source":"iana","compressible":true},"application/geo+json":{"source":"iana","compressible":true,"extensions":["geojson"]},"application/geo+json-seq":{"source":"iana"},"application/geopackage+sqlite3":{"source":"iana"},"application/geoxacml+xml":{"source":"iana","compressible":true},"application/gltf-buffer":{"source":"iana"},"application/gml+xml":{"source":"iana","compressible":true,"extensions":["gml"]},"application/gpx+xml":{"source":"apache","compressible":true,"extensions":["gpx"]},"application/gxf":{"source":"apache","extensions":["gxf"]},"application/gzip":{"source":"iana","compressible":false,"extensions":["gz"]},"application/h224":{"source":"iana"},"application/held+xml":{"source":"iana","compressible":true},"application/hjson":{"extensions":["hjson"]},"application/http":{"source":"iana"},"application/hyperstudio":{"source":"iana","extensions":["stk"]},"application/ibe-key-request+xml":{"source":"iana","compressible":true},"application/ibe-pkg-reply+xml":{"source":"iana","compressible":true},"application/ibe-pp-data":{"source":"iana"},"application/iges":{"source":"iana"},"application/im-iscomposing+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/index":{"source":"iana"},"application/index.cmd":{"source":"iana"},"application/index.obj":{"source":"iana"},"application/index.response":{"source":"iana"},"application/index.vnd":{"source":"iana"},"application/inkml+xml":{"source":"iana","compressible":true,"extensions":["ink","inkml"]},"application/iotp":{"source":"iana"},"application/ipfix":{"source":"iana","extensions":["ipfix"]},"application/ipp":{"source":"iana"},"application/isup":{"source":"iana"},"application/its+xml":{"source":"iana","compressible":true,"extensions":["its"]},"application/java-archive":{"source":"apache","compressible":false,"extensions":["jar","war","ear"]},"application/java-serialized-object":{"source":"apache","compressible":false,"extensions":["ser"]},"application/java-vm":{"source":"apache","compressible":false,"extensions":["class"]},"application/javascript":{"source":"iana","charset":"UTF-8","compressible":true,"extensions":["js","mjs"]},"application/jf2feed+json":{"source":"iana","compressible":true},"application/jose":{"source":"iana"},"application/jose+json":{"source":"iana","compressible":true},"application/jrd+json":{"source":"iana","compressible":true},"application/jscalendar+json":{"source":"iana","compressible":true},"application/json":{"source":"iana","charset":"UTF-8","compressible":true,"extensions":["json","map"]},"application/json-patch+json":{"source":"iana","compressible":true},"application/json-seq":{"source":"iana"},"application/json5":{"extensions":["json5"]},"application/jsonml+json":{"source":"apache","compressible":true,"extensions":["jsonml"]},"application/jwk+json":{"source":"iana","compressible":true},"application/jwk-set+json":{"source":"iana","compressible":true},"application/jwt":{"source":"iana"},"application/kpml-request+xml":{"source":"iana","compressible":true},"application/kpml-response+xml":{"source":"iana","compressible":true},"application/ld+json":{"source":"iana","compressible":true,"extensions":["jsonld"]},"application/lgr+xml":{"source":"iana","compressible":true,"extensions":["lgr"]},"application/link-format":{"source":"iana"},"application/load-control+xml":{"source":"iana","compressible":true},"application/lost+xml":{"source":"iana","compressible":true,"extensions":["lostxml"]},"application/lostsync+xml":{"source":"iana","compressible":true},"application/lpf+zip":{"source":"iana","compressible":false},"application/lxf":{"source":"iana"},"application/mac-binhex40":{"source":"iana","extensions":["hqx"]},"application/mac-compactpro":{"source":"apache","extensions":["cpt"]},"application/macwriteii":{"source":"iana"},"application/mads+xml":{"source":"iana","compressible":true,"extensions":["mads"]},"application/manifest+json":{"source":"iana","charset":"UTF-8","compressible":true,"extensions":["webmanifest"]},"application/marc":{"source":"iana","extensions":["mrc"]},"application/marcxml+xml":{"source":"iana","compressible":true,"extensions":["mrcx"]},"application/mathematica":{"source":"iana","extensions":["ma","nb","mb"]},"application/mathml+xml":{"source":"iana","compressible":true,"extensions":["mathml"]},"application/mathml-content+xml":{"source":"iana","compressible":true},"application/mathml-presentation+xml":{"source":"iana","compressible":true},"application/mbms-associated-procedure-description+xml":{"source":"iana","compressible":true},"application/mbms-deregister+xml":{"source":"iana","compressible":true},"application/mbms-envelope+xml":{"source":"iana","compressible":true},"application/mbms-msk+xml":{"source":"iana","compressible":true},"application/mbms-msk-response+xml":{"source":"iana","compressible":true},"application/mbms-protection-description+xml":{"source":"iana","compressible":true},"application/mbms-reception-report+xml":{"source":"iana","compressible":true},"application/mbms-register+xml":{"source":"iana","compressible":true},"application/mbms-register-response+xml":{"source":"iana","compressible":true},"application/mbms-schedule+xml":{"source":"iana","compressible":true},"application/mbms-user-service-description+xml":{"source":"iana","compressible":true},"application/mbox":{"source":"iana","extensions":["mbox"]},"application/media-policy-dataset+xml":{"source":"iana","compressible":true,"extensions":["mpf"]},"application/media_control+xml":{"source":"iana","compressible":true},"application/mediaservercontrol+xml":{"source":"iana","compressible":true,"extensions":["mscml"]},"application/merge-patch+json":{"source":"iana","compressible":true},"application/metalink+xml":{"source":"apache","compressible":true,"extensions":["metalink"]},"application/metalink4+xml":{"source":"iana","compressible":true,"extensions":["meta4"]},"application/mets+xml":{"source":"iana","compressible":true,"extensions":["mets"]},"application/mf4":{"source":"iana"},"application/mikey":{"source":"iana"},"application/mipc":{"source":"iana"},"application/missing-blocks+cbor-seq":{"source":"iana"},"application/mmt-aei+xml":{"source":"iana","compressible":true,"extensions":["maei"]},"application/mmt-usd+xml":{"source":"iana","compressible":true,"extensions":["musd"]},"application/mods+xml":{"source":"iana","compressible":true,"extensions":["mods"]},"application/moss-keys":{"source":"iana"},"application/moss-signature":{"source":"iana"},"application/mosskey-data":{"source":"iana"},"application/mosskey-request":{"source":"iana"},"application/mp21":{"source":"iana","extensions":["m21","mp21"]},"application/mp4":{"source":"iana","extensions":["mp4s","m4p"]},"application/mpeg4-generic":{"source":"iana"},"application/mpeg4-iod":{"source":"iana"},"application/mpeg4-iod-xmt":{"source":"iana"},"application/mrb-consumer+xml":{"source":"iana","compressible":true},"application/mrb-publish+xml":{"source":"iana","compressible":true},"application/msc-ivr+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/msc-mixer+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/msword":{"source":"iana","compressible":false,"extensions":["doc","dot"]},"application/mud+json":{"source":"iana","compressible":true},"application/multipart-core":{"source":"iana"},"application/mxf":{"source":"iana","extensions":["mxf"]},"application/n-quads":{"source":"iana","extensions":["nq"]},"application/n-triples":{"source":"iana","extensions":["nt"]},"application/nasdata":{"source":"iana"},"application/news-checkgroups":{"source":"iana","charset":"US-ASCII"},"application/news-groupinfo":{"source":"iana","charset":"US-ASCII"},"application/news-transmission":{"source":"iana"},"application/nlsml+xml":{"source":"iana","compressible":true},"application/node":{"source":"iana","extensions":["cjs"]},"application/nss":{"source":"iana"},"application/oauth-authz-req+jwt":{"source":"iana"},"application/oblivious-dns-message":{"source":"iana"},"application/ocsp-request":{"source":"iana"},"application/ocsp-response":{"source":"iana"},"application/octet-stream":{"source":"iana","compressible":false,"extensions":["bin","dms","lrf","mar","so","dist","distz","pkg","bpk","dump","elc","deploy","exe","dll","deb","dmg","iso","img","msi","msp","msm","buffer"]},"application/oda":{"source":"iana","extensions":["oda"]},"application/odm+xml":{"source":"iana","compressible":true},"application/odx":{"source":"iana"},"application/oebps-package+xml":{"source":"iana","compressible":true,"extensions":["opf"]},"application/ogg":{"source":"iana","compressible":false,"extensions":["ogx"]},"application/omdoc+xml":{"source":"apache","compressible":true,"extensions":["omdoc"]},"application/onenote":{"source":"apache","extensions":["onetoc","onetoc2","onetmp","onepkg"]},"application/opc-nodeset+xml":{"source":"iana","compressible":true},"application/oscore":{"source":"iana"},"application/oxps":{"source":"iana","extensions":["oxps"]},"application/p21":{"source":"iana"},"application/p21+zip":{"source":"iana","compressible":false},"application/p2p-overlay+xml":{"source":"iana","compressible":true,"extensions":["relo"]},"application/parityfec":{"source":"iana"},"application/passport":{"source":"iana"},"application/patch-ops-error+xml":{"source":"iana","compressible":true,"extensions":["xer"]},"application/pdf":{"source":"iana","compressible":false,"extensions":["pdf"]},"application/pdx":{"source":"iana"},"application/pem-certificate-chain":{"source":"iana"},"application/pgp-encrypted":{"source":"iana","compressible":false,"extensions":["pgp"]},"application/pgp-keys":{"source":"iana","extensions":["asc"]},"application/pgp-signature":{"source":"iana","extensions":["asc","sig"]},"application/pics-rules":{"source":"apache","extensions":["prf"]},"application/pidf+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/pidf-diff+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/pkcs10":{"source":"iana","extensions":["p10"]},"application/pkcs12":{"source":"iana"},"application/pkcs7-mime":{"source":"iana","extensions":["p7m","p7c"]},"application/pkcs7-signature":{"source":"iana","extensions":["p7s"]},"application/pkcs8":{"source":"iana","extensions":["p8"]},"application/pkcs8-encrypted":{"source":"iana"},"application/pkix-attr-cert":{"source":"iana","extensions":["ac"]},"application/pkix-cert":{"source":"iana","extensions":["cer"]},"application/pkix-crl":{"source":"iana","extensions":["crl"]},"application/pkix-pkipath":{"source":"iana","extensions":["pkipath"]},"application/pkixcmp":{"source":"iana","extensions":["pki"]},"application/pls+xml":{"source":"iana","compressible":true,"extensions":["pls"]},"application/poc-settings+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/postscript":{"source":"iana","compressible":true,"extensions":["ai","eps","ps"]},"application/ppsp-tracker+json":{"source":"iana","compressible":true},"application/problem+json":{"source":"iana","compressible":true},"application/problem+xml":{"source":"iana","compressible":true},"application/provenance+xml":{"source":"iana","compressible":true,"extensions":["provx"]},"application/prs.alvestrand.titrax-sheet":{"source":"iana"},"application/prs.cww":{"source":"iana","extensions":["cww"]},"application/prs.cyn":{"source":"iana","charset":"7-BIT"},"application/prs.hpub+zip":{"source":"iana","compressible":false},"application/prs.nprend":{"source":"iana"},"application/prs.plucker":{"source":"iana"},"application/prs.rdf-xml-crypt":{"source":"iana"},"application/prs.xsf+xml":{"source":"iana","compressible":true},"application/pskc+xml":{"source":"iana","compressible":true,"extensions":["pskcxml"]},"application/pvd+json":{"source":"iana","compressible":true},"application/qsig":{"source":"iana"},"application/raml+yaml":{"compressible":true,"extensions":["raml"]},"application/raptorfec":{"source":"iana"},"application/rdap+json":{"source":"iana","compressible":true},"application/rdf+xml":{"source":"iana","compressible":true,"extensions":["rdf","owl"]},"application/reginfo+xml":{"source":"iana","compressible":true,"extensions":["rif"]},"application/relax-ng-compact-syntax":{"source":"iana","extensions":["rnc"]},"application/remote-printing":{"source":"iana"},"application/reputon+json":{"source":"iana","compressible":true},"application/resource-lists+xml":{"source":"iana","compressible":true,"extensions":["rl"]},"application/resource-lists-diff+xml":{"source":"iana","compressible":true,"extensions":["rld"]},"application/rfc+xml":{"source":"iana","compressible":true},"application/riscos":{"source":"iana"},"application/rlmi+xml":{"source":"iana","compressible":true},"application/rls-services+xml":{"source":"iana","compressible":true,"extensions":["rs"]},"application/route-apd+xml":{"source":"iana","compressible":true,"extensions":["rapd"]},"application/route-s-tsid+xml":{"source":"iana","compressible":true,"extensions":["sls"]},"application/route-usd+xml":{"source":"iana","compressible":true,"extensions":["rusd"]},"application/rpki-ghostbusters":{"source":"iana","extensions":["gbr"]},"application/rpki-manifest":{"source":"iana","extensions":["mft"]},"application/rpki-publication":{"source":"iana"},"application/rpki-roa":{"source":"iana","extensions":["roa"]},"application/rpki-updown":{"source":"iana"},"application/rsd+xml":{"source":"apache","compressible":true,"extensions":["rsd"]},"application/rss+xml":{"source":"apache","compressible":true,"extensions":["rss"]},"application/rtf":{"source":"iana","compressible":true,"extensions":["rtf"]},"application/rtploopback":{"source":"iana"},"application/rtx":{"source":"iana"},"application/samlassertion+xml":{"source":"iana","compressible":true},"application/samlmetadata+xml":{"source":"iana","compressible":true},"application/sarif+json":{"source":"iana","compressible":true},"application/sarif-external-properties+json":{"source":"iana","compressible":true},"application/sbe":{"source":"iana"},"application/sbml+xml":{"source":"iana","compressible":true,"extensions":["sbml"]},"application/scaip+xml":{"source":"iana","compressible":true},"application/scim+json":{"source":"iana","compressible":true},"application/scvp-cv-request":{"source":"iana","extensions":["scq"]},"application/scvp-cv-response":{"source":"iana","extensions":["scs"]},"application/scvp-vp-request":{"source":"iana","extensions":["spq"]},"application/scvp-vp-response":{"source":"iana","extensions":["spp"]},"application/sdp":{"source":"iana","extensions":["sdp"]},"application/secevent+jwt":{"source":"iana"},"application/senml+cbor":{"source":"iana"},"application/senml+json":{"source":"iana","compressible":true},"application/senml+xml":{"source":"iana","compressible":true,"extensions":["senmlx"]},"application/senml-etch+cbor":{"source":"iana"},"application/senml-etch+json":{"source":"iana","compressible":true},"application/senml-exi":{"source":"iana"},"application/sensml+cbor":{"source":"iana"},"application/sensml+json":{"source":"iana","compressible":true},"application/sensml+xml":{"source":"iana","compressible":true,"extensions":["sensmlx"]},"application/sensml-exi":{"source":"iana"},"application/sep+xml":{"source":"iana","compressible":true},"application/sep-exi":{"source":"iana"},"application/session-info":{"source":"iana"},"application/set-payment":{"source":"iana"},"application/set-payment-initiation":{"source":"iana","extensions":["setpay"]},"application/set-registration":{"source":"iana"},"application/set-registration-initiation":{"source":"iana","extensions":["setreg"]},"application/sgml":{"source":"iana"},"application/sgml-open-catalog":{"source":"iana"},"application/shf+xml":{"source":"iana","compressible":true,"extensions":["shf"]},"application/sieve":{"source":"iana","extensions":["siv","sieve"]},"application/simple-filter+xml":{"source":"iana","compressible":true},"application/simple-message-summary":{"source":"iana"},"application/simplesymbolcontainer":{"source":"iana"},"application/sipc":{"source":"iana"},"application/slate":{"source":"iana"},"application/smil":{"source":"iana"},"application/smil+xml":{"source":"iana","compressible":true,"extensions":["smi","smil"]},"application/smpte336m":{"source":"iana"},"application/soap+fastinfoset":{"source":"iana"},"application/soap+xml":{"source":"iana","compressible":true},"application/sparql-query":{"source":"iana","extensions":["rq"]},"application/sparql-results+xml":{"source":"iana","compressible":true,"extensions":["srx"]},"application/spdx+json":{"source":"iana","compressible":true},"application/spirits-event+xml":{"source":"iana","compressible":true},"application/sql":{"source":"iana"},"application/srgs":{"source":"iana","extensions":["gram"]},"application/srgs+xml":{"source":"iana","compressible":true,"extensions":["grxml"]},"application/sru+xml":{"source":"iana","compressible":true,"extensions":["sru"]},"application/ssdl+xml":{"source":"apache","compressible":true,"extensions":["ssdl"]},"application/ssml+xml":{"source":"iana","compressible":true,"extensions":["ssml"]},"application/stix+json":{"source":"iana","compressible":true},"application/swid+xml":{"source":"iana","compressible":true,"extensions":["swidtag"]},"application/tamp-apex-update":{"source":"iana"},"application/tamp-apex-update-confirm":{"source":"iana"},"application/tamp-community-update":{"source":"iana"},"application/tamp-community-update-confirm":{"source":"iana"},"application/tamp-error":{"source":"iana"},"application/tamp-sequence-adjust":{"source":"iana"},"application/tamp-sequence-adjust-confirm":{"source":"iana"},"application/tamp-status-query":{"source":"iana"},"application/tamp-status-response":{"source":"iana"},"application/tamp-update":{"source":"iana"},"application/tamp-update-confirm":{"source":"iana"},"application/tar":{"compressible":true},"application/taxii+json":{"source":"iana","compressible":true},"application/td+json":{"source":"iana","compressible":true},"application/tei+xml":{"source":"iana","compressible":true,"extensions":["tei","teicorpus"]},"application/tetra_isi":{"source":"iana"},"application/thraud+xml":{"source":"iana","compressible":true,"extensions":["tfi"]},"application/timestamp-query":{"source":"iana"},"application/timestamp-reply":{"source":"iana"},"application/timestamped-data":{"source":"iana","extensions":["tsd"]},"application/tlsrpt+gzip":{"source":"iana"},"application/tlsrpt+json":{"source":"iana","compressible":true},"application/tnauthlist":{"source":"iana"},"application/token-introspection+jwt":{"source":"iana"},"application/toml":{"compressible":true,"extensions":["toml"]},"application/trickle-ice-sdpfrag":{"source":"iana"},"application/trig":{"source":"iana","extensions":["trig"]},"application/ttml+xml":{"source":"iana","compressible":true,"extensions":["ttml"]},"application/tve-trigger":{"source":"iana"},"application/tzif":{"source":"iana"},"application/tzif-leap":{"source":"iana"},"application/ubjson":{"compressible":false,"extensions":["ubj"]},"application/ulpfec":{"source":"iana"},"application/urc-grpsheet+xml":{"source":"iana","compressible":true},"application/urc-ressheet+xml":{"source":"iana","compressible":true,"extensions":["rsheet"]},"application/urc-targetdesc+xml":{"source":"iana","compressible":true,"extensions":["td"]},"application/urc-uisocketdesc+xml":{"source":"iana","compressible":true},"application/vcard+json":{"source":"iana","compressible":true},"application/vcard+xml":{"source":"iana","compressible":true},"application/vemmi":{"source":"iana"},"application/vividence.scriptfile":{"source":"apache"},"application/vnd.1000minds.decision-model+xml":{"source":"iana","compressible":true,"extensions":["1km"]},"application/vnd.3gpp-prose+xml":{"source":"iana","compressible":true},"application/vnd.3gpp-prose-pc3ch+xml":{"source":"iana","compressible":true},"application/vnd.3gpp-v2x-local-service-information":{"source":"iana"},"application/vnd.3gpp.5gnas":{"source":"iana"},"application/vnd.3gpp.access-transfer-events+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.bsf+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.gmop+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.gtpc":{"source":"iana"},"application/vnd.3gpp.interworking-data":{"source":"iana"},"application/vnd.3gpp.lpp":{"source":"iana"},"application/vnd.3gpp.mc-signalling-ear":{"source":"iana"},"application/vnd.3gpp.mcdata-affiliation-command+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcdata-info+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcdata-payload":{"source":"iana"},"application/vnd.3gpp.mcdata-service-config+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcdata-signalling":{"source":"iana"},"application/vnd.3gpp.mcdata-ue-config+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcdata-user-profile+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcptt-affiliation-command+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcptt-floor-request+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcptt-info+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcptt-location-info+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcptt-mbms-usage-info+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcptt-service-config+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcptt-signed+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcptt-ue-config+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcptt-ue-init-config+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcptt-user-profile+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcvideo-affiliation-command+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcvideo-affiliation-info+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcvideo-info+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcvideo-location-info+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcvideo-mbms-usage-info+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcvideo-service-config+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcvideo-transmission-request+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcvideo-ue-config+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcvideo-user-profile+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mid-call+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.ngap":{"source":"iana"},"application/vnd.3gpp.pfcp":{"source":"iana"},"application/vnd.3gpp.pic-bw-large":{"source":"iana","extensions":["plb"]},"application/vnd.3gpp.pic-bw-small":{"source":"iana","extensions":["psb"]},"application/vnd.3gpp.pic-bw-var":{"source":"iana","extensions":["pvb"]},"application/vnd.3gpp.s1ap":{"source":"iana"},"application/vnd.3gpp.sms":{"source":"iana"},"application/vnd.3gpp.sms+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.srvcc-ext+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.srvcc-info+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.state-and-event-info+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.ussd+xml":{"source":"iana","compressible":true},"application/vnd.3gpp2.bcmcsinfo+xml":{"source":"iana","compressible":true},"application/vnd.3gpp2.sms":{"source":"iana"},"application/vnd.3gpp2.tcap":{"source":"iana","extensions":["tcap"]},"application/vnd.3lightssoftware.imagescal":{"source":"iana"},"application/vnd.3m.post-it-notes":{"source":"iana","extensions":["pwn"]},"application/vnd.accpac.simply.aso":{"source":"iana","extensions":["aso"]},"application/vnd.accpac.simply.imp":{"source":"iana","extensions":["imp"]},"application/vnd.acucobol":{"source":"iana","extensions":["acu"]},"application/vnd.acucorp":{"source":"iana","extensions":["atc","acutc"]},"application/vnd.adobe.air-application-installer-package+zip":{"source":"apache","compressible":false,"extensions":["air"]},"application/vnd.adobe.flash.movie":{"source":"iana"},"application/vnd.adobe.formscentral.fcdt":{"source":"iana","extensions":["fcdt"]},"application/vnd.adobe.fxp":{"source":"iana","extensions":["fxp","fxpl"]},"application/vnd.adobe.partial-upload":{"source":"iana"},"application/vnd.adobe.xdp+xml":{"source":"iana","compressible":true,"extensions":["xdp"]},"application/vnd.adobe.xfdf":{"source":"iana","extensions":["xfdf"]},"application/vnd.aether.imp":{"source":"iana"},"application/vnd.afpc.afplinedata":{"source":"iana"},"application/vnd.afpc.afplinedata-pagedef":{"source":"iana"},"application/vnd.afpc.cmoca-cmresource":{"source":"iana"},"application/vnd.afpc.foca-charset":{"source":"iana"},"application/vnd.afpc.foca-codedfont":{"source":"iana"},"application/vnd.afpc.foca-codepage":{"source":"iana"},"application/vnd.afpc.modca":{"source":"iana"},"application/vnd.afpc.modca-cmtable":{"source":"iana"},"application/vnd.afpc.modca-formdef":{"source":"iana"},"application/vnd.afpc.modca-mediummap":{"source":"iana"},"application/vnd.afpc.modca-objectcontainer":{"source":"iana"},"application/vnd.afpc.modca-overlay":{"source":"iana"},"application/vnd.afpc.modca-pagesegment":{"source":"iana"},"application/vnd.age":{"source":"iana","extensions":["age"]},"application/vnd.ah-barcode":{"source":"iana"},"application/vnd.ahead.space":{"source":"iana","extensions":["ahead"]},"application/vnd.airzip.filesecure.azf":{"source":"iana","extensions":["azf"]},"application/vnd.airzip.filesecure.azs":{"source":"iana","extensions":["azs"]},"application/vnd.amadeus+json":{"source":"iana","compressible":true},"application/vnd.amazon.ebook":{"source":"apache","extensions":["azw"]},"application/vnd.amazon.mobi8-ebook":{"source":"iana"},"application/vnd.americandynamics.acc":{"source":"iana","extensions":["acc"]},"application/vnd.amiga.ami":{"source":"iana","extensions":["ami"]},"application/vnd.amundsen.maze+xml":{"source":"iana","compressible":true},"application/vnd.android.ota":{"source":"iana"},"application/vnd.android.package-archive":{"source":"apache","compressible":false,"extensions":["apk"]},"application/vnd.anki":{"source":"iana"},"application/vnd.anser-web-certificate-issue-initiation":{"source":"iana","extensions":["cii"]},"application/vnd.anser-web-funds-transfer-initiation":{"source":"apache","extensions":["fti"]},"application/vnd.antix.game-component":{"source":"iana","extensions":["atx"]},"application/vnd.apache.arrow.file":{"source":"iana"},"application/vnd.apache.arrow.stream":{"source":"iana"},"application/vnd.apache.thrift.binary":{"source":"iana"},"application/vnd.apache.thrift.compact":{"source":"iana"},"application/vnd.apache.thrift.json":{"source":"iana"},"application/vnd.api+json":{"source":"iana","compressible":true},"application/vnd.aplextor.warrp+json":{"source":"iana","compressible":true},"application/vnd.apothekende.reservation+json":{"source":"iana","compressible":true},"application/vnd.apple.installer+xml":{"source":"iana","compressible":true,"extensions":["mpkg"]},"application/vnd.apple.keynote":{"source":"iana","extensions":["key"]},"application/vnd.apple.mpegurl":{"source":"iana","extensions":["m3u8"]},"application/vnd.apple.numbers":{"source":"iana","extensions":["numbers"]},"application/vnd.apple.pages":{"source":"iana","extensions":["pages"]},"application/vnd.apple.pkpass":{"compressible":false,"extensions":["pkpass"]},"application/vnd.arastra.swi":{"source":"iana"},"application/vnd.aristanetworks.swi":{"source":"iana","extensions":["swi"]},"application/vnd.artisan+json":{"source":"iana","compressible":true},"application/vnd.artsquare":{"source":"iana"},"application/vnd.astraea-software.iota":{"source":"iana","extensions":["iota"]},"application/vnd.audiograph":{"source":"iana","extensions":["aep"]},"application/vnd.autopackage":{"source":"iana"},"application/vnd.avalon+json":{"source":"iana","compressible":true},"application/vnd.avistar+xml":{"source":"iana","compressible":true},"application/vnd.balsamiq.bmml+xml":{"source":"iana","compressible":true,"extensions":["bmml"]},"application/vnd.balsamiq.bmpr":{"source":"iana"},"application/vnd.banana-accounting":{"source":"iana"},"application/vnd.bbf.usp.error":{"source":"iana"},"application/vnd.bbf.usp.msg":{"source":"iana"},"application/vnd.bbf.usp.msg+json":{"source":"iana","compressible":true},"application/vnd.bekitzur-stech+json":{"source":"iana","compressible":true},"application/vnd.bint.med-content":{"source":"iana"},"application/vnd.biopax.rdf+xml":{"source":"iana","compressible":true},"application/vnd.blink-idb-value-wrapper":{"source":"iana"},"application/vnd.blueice.multipass":{"source":"iana","extensions":["mpm"]},"application/vnd.bluetooth.ep.oob":{"source":"iana"},"application/vnd.bluetooth.le.oob":{"source":"iana"},"application/vnd.bmi":{"source":"iana","extensions":["bmi"]},"application/vnd.bpf":{"source":"iana"},"application/vnd.bpf3":{"source":"iana"},"application/vnd.businessobjects":{"source":"iana","extensions":["rep"]},"application/vnd.byu.uapi+json":{"source":"iana","compressible":true},"application/vnd.cab-jscript":{"source":"iana"},"application/vnd.canon-cpdl":{"source":"iana"},"application/vnd.canon-lips":{"source":"iana"},"application/vnd.capasystems-pg+json":{"source":"iana","compressible":true},"application/vnd.cendio.thinlinc.clientconf":{"source":"iana"},"application/vnd.century-systems.tcp_stream":{"source":"iana"},"application/vnd.chemdraw+xml":{"source":"iana","compressible":true,"extensions":["cdxml"]},"application/vnd.chess-pgn":{"source":"iana"},"application/vnd.chipnuts.karaoke-mmd":{"source":"iana","extensions":["mmd"]},"application/vnd.ciedi":{"source":"iana"},"application/vnd.cinderella":{"source":"iana","extensions":["cdy"]},"application/vnd.cirpack.isdn-ext":{"source":"iana"},"application/vnd.citationstyles.style+xml":{"source":"iana","compressible":true,"extensions":["csl"]},"application/vnd.claymore":{"source":"iana","extensions":["cla"]},"application/vnd.cloanto.rp9":{"source":"iana","extensions":["rp9"]},"application/vnd.clonk.c4group":{"source":"iana","extensions":["c4g","c4d","c4f","c4p","c4u"]},"application/vnd.cluetrust.cartomobile-config":{"source":"iana","extensions":["c11amc"]},"application/vnd.cluetrust.cartomobile-config-pkg":{"source":"iana","extensions":["c11amz"]},"application/vnd.coffeescript":{"source":"iana"},"application/vnd.collabio.xodocuments.document":{"source":"iana"},"application/vnd.collabio.xodocuments.document-template":{"source":"iana"},"application/vnd.collabio.xodocuments.presentation":{"source":"iana"},"application/vnd.collabio.xodocuments.presentation-template":{"source":"iana"},"application/vnd.collabio.xodocuments.spreadsheet":{"source":"iana"},"application/vnd.collabio.xodocuments.spreadsheet-template":{"source":"iana"},"application/vnd.collection+json":{"source":"iana","compressible":true},"application/vnd.collection.doc+json":{"source":"iana","compressible":true},"application/vnd.collection.next+json":{"source":"iana","compressible":true},"application/vnd.comicbook+zip":{"source":"iana","compressible":false},"application/vnd.comicbook-rar":{"source":"iana"},"application/vnd.commerce-battelle":{"source":"iana"},"application/vnd.commonspace":{"source":"iana","extensions":["csp"]},"application/vnd.contact.cmsg":{"source":"iana","extensions":["cdbcmsg"]},"application/vnd.coreos.ignition+json":{"source":"iana","compressible":true},"application/vnd.cosmocaller":{"source":"iana","extensions":["cmc"]},"application/vnd.crick.clicker":{"source":"iana","extensions":["clkx"]},"application/vnd.crick.clicker.keyboard":{"source":"iana","extensions":["clkk"]},"application/vnd.crick.clicker.palette":{"source":"iana","extensions":["clkp"]},"application/vnd.crick.clicker.template":{"source":"iana","extensions":["clkt"]},"application/vnd.crick.clicker.wordbank":{"source":"iana","extensions":["clkw"]},"application/vnd.criticaltools.wbs+xml":{"source":"iana","compressible":true,"extensions":["wbs"]},"application/vnd.cryptii.pipe+json":{"source":"iana","compressible":true},"application/vnd.crypto-shade-file":{"source":"iana"},"application/vnd.cryptomator.encrypted":{"source":"iana"},"application/vnd.cryptomator.vault":{"source":"iana"},"application/vnd.ctc-posml":{"source":"iana","extensions":["pml"]},"application/vnd.ctct.ws+xml":{"source":"iana","compressible":true},"application/vnd.cups-pdf":{"source":"iana"},"application/vnd.cups-postscript":{"source":"iana"},"application/vnd.cups-ppd":{"source":"iana","extensions":["ppd"]},"application/vnd.cups-raster":{"source":"iana"},"application/vnd.cups-raw":{"source":"iana"},"application/vnd.curl":{"source":"iana"},"application/vnd.curl.car":{"source":"apache","extensions":["car"]},"application/vnd.curl.pcurl":{"source":"apache","extensions":["pcurl"]},"application/vnd.cyan.dean.root+xml":{"source":"iana","compressible":true},"application/vnd.cybank":{"source":"iana"},"application/vnd.cyclonedx+json":{"source":"iana","compressible":true},"application/vnd.cyclonedx+xml":{"source":"iana","compressible":true},"application/vnd.d2l.coursepackage1p0+zip":{"source":"iana","compressible":false},"application/vnd.d3m-dataset":{"source":"iana"},"application/vnd.d3m-problem":{"source":"iana"},"application/vnd.dart":{"source":"iana","compressible":true,"extensions":["dart"]},"application/vnd.data-vision.rdz":{"source":"iana","extensions":["rdz"]},"application/vnd.datapackage+json":{"source":"iana","compressible":true},"application/vnd.dataresource+json":{"source":"iana","compressible":true},"application/vnd.dbf":{"source":"iana","extensions":["dbf"]},"application/vnd.debian.binary-package":{"source":"iana"},"application/vnd.dece.data":{"source":"iana","extensions":["uvf","uvvf","uvd","uvvd"]},"application/vnd.dece.ttml+xml":{"source":"iana","compressible":true,"extensions":["uvt","uvvt"]},"application/vnd.dece.unspecified":{"source":"iana","extensions":["uvx","uvvx"]},"application/vnd.dece.zip":{"source":"iana","extensions":["uvz","uvvz"]},"application/vnd.denovo.fcselayout-link":{"source":"iana","extensions":["fe_launch"]},"application/vnd.desmume.movie":{"source":"iana"},"application/vnd.dir-bi.plate-dl-nosuffix":{"source":"iana"},"application/vnd.dm.delegation+xml":{"source":"iana","compressible":true},"application/vnd.dna":{"source":"iana","extensions":["dna"]},"application/vnd.document+json":{"source":"iana","compressible":true},"application/vnd.dolby.mlp":{"source":"apache","extensions":["mlp"]},"application/vnd.dolby.mobile.1":{"source":"iana"},"application/vnd.dolby.mobile.2":{"source":"iana"},"application/vnd.doremir.scorecloud-binary-document":{"source":"iana"},"application/vnd.dpgraph":{"source":"iana","extensions":["dpg"]},"application/vnd.dreamfactory":{"source":"iana","extensions":["dfac"]},"application/vnd.drive+json":{"source":"iana","compressible":true},"application/vnd.ds-keypoint":{"source":"apache","extensions":["kpxx"]},"application/vnd.dtg.local":{"source":"iana"},"application/vnd.dtg.local.flash":{"source":"iana"},"application/vnd.dtg.local.html":{"source":"iana"},"application/vnd.dvb.ait":{"source":"iana","extensions":["ait"]},"application/vnd.dvb.dvbisl+xml":{"source":"iana","compressible":true},"application/vnd.dvb.dvbj":{"source":"iana"},"application/vnd.dvb.esgcontainer":{"source":"iana"},"application/vnd.dvb.ipdcdftnotifaccess":{"source":"iana"},"application/vnd.dvb.ipdcesgaccess":{"source":"iana"},"application/vnd.dvb.ipdcesgaccess2":{"source":"iana"},"application/vnd.dvb.ipdcesgpdd":{"source":"iana"},"application/vnd.dvb.ipdcroaming":{"source":"iana"},"application/vnd.dvb.iptv.alfec-base":{"source":"iana"},"application/vnd.dvb.iptv.alfec-enhancement":{"source":"iana"},"application/vnd.dvb.notif-aggregate-root+xml":{"source":"iana","compressible":true},"application/vnd.dvb.notif-container+xml":{"source":"iana","compressible":true},"application/vnd.dvb.notif-generic+xml":{"source":"iana","compressible":true},"application/vnd.dvb.notif-ia-msglist+xml":{"source":"iana","compressible":true},"application/vnd.dvb.notif-ia-registration-request+xml":{"source":"iana","compressible":true},"application/vnd.dvb.notif-ia-registration-response+xml":{"source":"iana","compressible":true},"application/vnd.dvb.notif-init+xml":{"source":"iana","compressible":true},"application/vnd.dvb.pfr":{"source":"iana"},"application/vnd.dvb.service":{"source":"iana","extensions":["svc"]},"application/vnd.dxr":{"source":"iana"},"application/vnd.dynageo":{"source":"iana","extensions":["geo"]},"application/vnd.dzr":{"source":"iana"},"application/vnd.easykaraoke.cdgdownload":{"source":"iana"},"application/vnd.ecdis-update":{"source":"iana"},"application/vnd.ecip.rlp":{"source":"iana"},"application/vnd.eclipse.ditto+json":{"source":"iana","compressible":true},"application/vnd.ecowin.chart":{"source":"iana","extensions":["mag"]},"application/vnd.ecowin.filerequest":{"source":"iana"},"application/vnd.ecowin.fileupdate":{"source":"iana"},"application/vnd.ecowin.series":{"source":"iana"},"application/vnd.ecowin.seriesrequest":{"source":"iana"},"application/vnd.ecowin.seriesupdate":{"source":"iana"},"application/vnd.efi.img":{"source":"iana"},"application/vnd.efi.iso":{"source":"iana"},"application/vnd.emclient.accessrequest+xml":{"source":"iana","compressible":true},"application/vnd.enliven":{"source":"iana","extensions":["nml"]},"application/vnd.enphase.envoy":{"source":"iana"},"application/vnd.eprints.data+xml":{"source":"iana","compressible":true},"application/vnd.epson.esf":{"source":"iana","extensions":["esf"]},"application/vnd.epson.msf":{"source":"iana","extensions":["msf"]},"application/vnd.epson.quickanime":{"source":"iana","extensions":["qam"]},"application/vnd.epson.salt":{"source":"iana","extensions":["slt"]},"application/vnd.epson.ssf":{"source":"iana","extensions":["ssf"]},"application/vnd.ericsson.quickcall":{"source":"iana"},"application/vnd.espass-espass+zip":{"source":"iana","compressible":false},"application/vnd.eszigno3+xml":{"source":"iana","compressible":true,"extensions":["es3","et3"]},"application/vnd.etsi.aoc+xml":{"source":"iana","compressible":true},"application/vnd.etsi.asic-e+zip":{"source":"iana","compressible":false},"application/vnd.etsi.asic-s+zip":{"source":"iana","compressible":false},"application/vnd.etsi.cug+xml":{"source":"iana","compressible":true},"application/vnd.etsi.iptvcommand+xml":{"source":"iana","compressible":true},"application/vnd.etsi.iptvdiscovery+xml":{"source":"iana","compressible":true},"application/vnd.etsi.iptvprofile+xml":{"source":"iana","compressible":true},"application/vnd.etsi.iptvsad-bc+xml":{"source":"iana","compressible":true},"application/vnd.etsi.iptvsad-cod+xml":{"source":"iana","compressible":true},"application/vnd.etsi.iptvsad-npvr+xml":{"source":"iana","compressible":true},"application/vnd.etsi.iptvservice+xml":{"source":"iana","compressible":true},"application/vnd.etsi.iptvsync+xml":{"source":"iana","compressible":true},"application/vnd.etsi.iptvueprofile+xml":{"source":"iana","compressible":true},"application/vnd.etsi.mcid+xml":{"source":"iana","compressible":true},"application/vnd.etsi.mheg5":{"source":"iana"},"application/vnd.etsi.overload-control-policy-dataset+xml":{"source":"iana","compressible":true},"application/vnd.etsi.pstn+xml":{"source":"iana","compressible":true},"application/vnd.etsi.sci+xml":{"source":"iana","compressible":true},"application/vnd.etsi.simservs+xml":{"source":"iana","compressible":true},"application/vnd.etsi.timestamp-token":{"source":"iana"},"application/vnd.etsi.tsl+xml":{"source":"iana","compressible":true},"application/vnd.etsi.tsl.der":{"source":"iana"},"application/vnd.eu.kasparian.car+json":{"source":"iana","compressible":true},"application/vnd.eudora.data":{"source":"iana"},"application/vnd.evolv.ecig.profile":{"source":"iana"},"application/vnd.evolv.ecig.settings":{"source":"iana"},"application/vnd.evolv.ecig.theme":{"source":"iana"},"application/vnd.exstream-empower+zip":{"source":"iana","compressible":false},"application/vnd.exstream-package":{"source":"iana"},"application/vnd.ezpix-album":{"source":"iana","extensions":["ez2"]},"application/vnd.ezpix-package":{"source":"iana","extensions":["ez3"]},"application/vnd.f-secure.mobile":{"source":"iana"},"application/vnd.familysearch.gedcom+zip":{"source":"iana","compressible":false},"application/vnd.fastcopy-disk-image":{"source":"iana"},"application/vnd.fdf":{"source":"iana","extensions":["fdf"]},"application/vnd.fdsn.mseed":{"source":"iana","extensions":["mseed"]},"application/vnd.fdsn.seed":{"source":"iana","extensions":["seed","dataless"]},"application/vnd.ffsns":{"source":"iana"},"application/vnd.ficlab.flb+zip":{"source":"iana","compressible":false},"application/vnd.filmit.zfc":{"source":"iana"},"application/vnd.fints":{"source":"iana"},"application/vnd.firemonkeys.cloudcell":{"source":"iana"},"application/vnd.flographit":{"source":"iana","extensions":["gph"]},"application/vnd.fluxtime.clip":{"source":"iana","extensions":["ftc"]},"application/vnd.font-fontforge-sfd":{"source":"iana"},"application/vnd.framemaker":{"source":"iana","extensions":["fm","frame","maker","book"]},"application/vnd.frogans.fnc":{"source":"iana","extensions":["fnc"]},"application/vnd.frogans.ltf":{"source":"iana","extensions":["ltf"]},"application/vnd.fsc.weblaunch":{"source":"iana","extensions":["fsc"]},"application/vnd.fujifilm.fb.docuworks":{"source":"iana"},"application/vnd.fujifilm.fb.docuworks.binder":{"source":"iana"},"application/vnd.fujifilm.fb.docuworks.container":{"source":"iana"},"application/vnd.fujifilm.fb.jfi+xml":{"source":"iana","compressible":true},"application/vnd.fujitsu.oasys":{"source":"iana","extensions":["oas"]},"application/vnd.fujitsu.oasys2":{"source":"iana","extensions":["oa2"]},"application/vnd.fujitsu.oasys3":{"source":"iana","extensions":["oa3"]},"application/vnd.fujitsu.oasysgp":{"source":"iana","extensions":["fg5"]},"application/vnd.fujitsu.oasysprs":{"source":"iana","extensions":["bh2"]},"application/vnd.fujixerox.art-ex":{"source":"iana"},"application/vnd.fujixerox.art4":{"source":"iana"},"application/vnd.fujixerox.ddd":{"source":"iana","extensions":["ddd"]},"application/vnd.fujixerox.docuworks":{"source":"iana","extensions":["xdw"]},"application/vnd.fujixerox.docuworks.binder":{"source":"iana","extensions":["xbd"]},"application/vnd.fujixerox.docuworks.container":{"source":"iana"},"application/vnd.fujixerox.hbpl":{"source":"iana"},"application/vnd.fut-misnet":{"source":"iana"},"application/vnd.futoin+cbor":{"source":"iana"},"application/vnd.futoin+json":{"source":"iana","compressible":true},"application/vnd.fuzzysheet":{"source":"iana","extensions":["fzs"]},"application/vnd.genomatix.tuxedo":{"source":"iana","extensions":["txd"]},"application/vnd.gentics.grd+json":{"source":"iana","compressible":true},"application/vnd.geo+json":{"source":"iana","compressible":true},"application/vnd.geocube+xml":{"source":"iana","compressible":true},"application/vnd.geogebra.file":{"source":"iana","extensions":["ggb"]},"application/vnd.geogebra.slides":{"source":"iana"},"application/vnd.geogebra.tool":{"source":"iana","extensions":["ggt"]},"application/vnd.geometry-explorer":{"source":"iana","extensions":["gex","gre"]},"application/vnd.geonext":{"source":"iana","extensions":["gxt"]},"application/vnd.geoplan":{"source":"iana","extensions":["g2w"]},"application/vnd.geospace":{"source":"iana","extensions":["g3w"]},"application/vnd.gerber":{"source":"iana"},"application/vnd.globalplatform.card-content-mgt":{"source":"iana"},"application/vnd.globalplatform.card-content-mgt-response":{"source":"iana"},"application/vnd.gmx":{"source":"iana","extensions":["gmx"]},"application/vnd.google-apps.document":{"compressible":false,"extensions":["gdoc"]},"application/vnd.google-apps.presentation":{"compressible":false,"extensions":["gslides"]},"application/vnd.google-apps.spreadsheet":{"compressible":false,"extensions":["gsheet"]},"application/vnd.google-earth.kml+xml":{"source":"iana","compressible":true,"extensions":["kml"]},"application/vnd.google-earth.kmz":{"source":"iana","compressible":false,"extensions":["kmz"]},"application/vnd.gov.sk.e-form+xml":{"source":"iana","compressible":true},"application/vnd.gov.sk.e-form+zip":{"source":"iana","compressible":false},"application/vnd.gov.sk.xmldatacontainer+xml":{"source":"iana","compressible":true},"application/vnd.grafeq":{"source":"iana","extensions":["gqf","gqs"]},"application/vnd.gridmp":{"source":"iana"},"application/vnd.groove-account":{"source":"iana","extensions":["gac"]},"application/vnd.groove-help":{"source":"iana","extensions":["ghf"]},"application/vnd.groove-identity-message":{"source":"iana","extensions":["gim"]},"application/vnd.groove-injector":{"source":"iana","extensions":["grv"]},"application/vnd.groove-tool-message":{"source":"iana","extensions":["gtm"]},"application/vnd.groove-tool-template":{"source":"iana","extensions":["tpl"]},"application/vnd.groove-vcard":{"source":"iana","extensions":["vcg"]},"application/vnd.hal+json":{"source":"iana","compressible":true},"application/vnd.hal+xml":{"source":"iana","compressible":true,"extensions":["hal"]},"application/vnd.handheld-entertainment+xml":{"source":"iana","compressible":true,"extensions":["zmm"]},"application/vnd.hbci":{"source":"iana","extensions":["hbci"]},"application/vnd.hc+json":{"source":"iana","compressible":true},"application/vnd.hcl-bireports":{"source":"iana"},"application/vnd.hdt":{"source":"iana"},"application/vnd.heroku+json":{"source":"iana","compressible":true},"application/vnd.hhe.lesson-player":{"source":"iana","extensions":["les"]},"application/vnd.hl7cda+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/vnd.hl7v2+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/vnd.hp-hpgl":{"source":"iana","extensions":["hpgl"]},"application/vnd.hp-hpid":{"source":"iana","extensions":["hpid"]},"application/vnd.hp-hps":{"source":"iana","extensions":["hps"]},"application/vnd.hp-jlyt":{"source":"iana","extensions":["jlt"]},"application/vnd.hp-pcl":{"source":"iana","extensions":["pcl"]},"application/vnd.hp-pclxl":{"source":"iana","extensions":["pclxl"]},"application/vnd.httphone":{"source":"iana"},"application/vnd.hydrostatix.sof-data":{"source":"iana","extensions":["sfd-hdstx"]},"application/vnd.hyper+json":{"source":"iana","compressible":true},"application/vnd.hyper-item+json":{"source":"iana","compressible":true},"application/vnd.hyperdrive+json":{"source":"iana","compressible":true},"application/vnd.hzn-3d-crossword":{"source":"iana"},"application/vnd.ibm.afplinedata":{"source":"iana"},"application/vnd.ibm.electronic-media":{"source":"iana"},"application/vnd.ibm.minipay":{"source":"iana","extensions":["mpy"]},"application/vnd.ibm.modcap":{"source":"iana","extensions":["afp","listafp","list3820"]},"application/vnd.ibm.rights-management":{"source":"iana","extensions":["irm"]},"application/vnd.ibm.secure-container":{"source":"iana","extensions":["sc"]},"application/vnd.iccprofile":{"source":"iana","extensions":["icc","icm"]},"application/vnd.ieee.1905":{"source":"iana"},"application/vnd.igloader":{"source":"iana","extensions":["igl"]},"application/vnd.imagemeter.folder+zip":{"source":"iana","compressible":false},"application/vnd.imagemeter.image+zip":{"source":"iana","compressible":false},"application/vnd.immervision-ivp":{"source":"iana","extensions":["ivp"]},"application/vnd.immervision-ivu":{"source":"iana","extensions":["ivu"]},"application/vnd.ims.imsccv1p1":{"source":"iana"},"application/vnd.ims.imsccv1p2":{"source":"iana"},"application/vnd.ims.imsccv1p3":{"source":"iana"},"application/vnd.ims.lis.v2.result+json":{"source":"iana","compressible":true},"application/vnd.ims.lti.v2.toolconsumerprofile+json":{"source":"iana","compressible":true},"application/vnd.ims.lti.v2.toolproxy+json":{"source":"iana","compressible":true},"application/vnd.ims.lti.v2.toolproxy.id+json":{"source":"iana","compressible":true},"application/vnd.ims.lti.v2.toolsettings+json":{"source":"iana","compressible":true},"application/vnd.ims.lti.v2.toolsettings.simple+json":{"source":"iana","compressible":true},"application/vnd.informedcontrol.rms+xml":{"source":"iana","compressible":true},"application/vnd.informix-visionary":{"source":"iana"},"application/vnd.infotech.project":{"source":"iana"},"application/vnd.infotech.project+xml":{"source":"iana","compressible":true},"application/vnd.innopath.wamp.notification":{"source":"iana"},"application/vnd.insors.igm":{"source":"iana","extensions":["igm"]},"application/vnd.intercon.formnet":{"source":"iana","extensions":["xpw","xpx"]},"application/vnd.intergeo":{"source":"iana","extensions":["i2g"]},"application/vnd.intertrust.digibox":{"source":"iana"},"application/vnd.intertrust.nncp":{"source":"iana"},"application/vnd.intu.qbo":{"source":"iana","extensions":["qbo"]},"application/vnd.intu.qfx":{"source":"iana","extensions":["qfx"]},"application/vnd.iptc.g2.catalogitem+xml":{"source":"iana","compressible":true},"application/vnd.iptc.g2.conceptitem+xml":{"source":"iana","compressible":true},"application/vnd.iptc.g2.knowledgeitem+xml":{"source":"iana","compressible":true},"application/vnd.iptc.g2.newsitem+xml":{"source":"iana","compressible":true},"application/vnd.iptc.g2.newsmessage+xml":{"source":"iana","compressible":true},"application/vnd.iptc.g2.packageitem+xml":{"source":"iana","compressible":true},"application/vnd.iptc.g2.planningitem+xml":{"source":"iana","compressible":true},"application/vnd.ipunplugged.rcprofile":{"source":"iana","extensions":["rcprofile"]},"application/vnd.irepository.package+xml":{"source":"iana","compressible":true,"extensions":["irp"]},"application/vnd.is-xpr":{"source":"iana","extensions":["xpr"]},"application/vnd.isac.fcs":{"source":"iana","extensions":["fcs"]},"application/vnd.iso11783-10+zip":{"source":"iana","compressible":false},"application/vnd.jam":{"source":"iana","extensions":["jam"]},"application/vnd.japannet-directory-service":{"source":"iana"},"application/vnd.japannet-jpnstore-wakeup":{"source":"iana"},"application/vnd.japannet-payment-wakeup":{"source":"iana"},"application/vnd.japannet-registration":{"source":"iana"},"application/vnd.japannet-registration-wakeup":{"source":"iana"},"application/vnd.japannet-setstore-wakeup":{"source":"iana"},"application/vnd.japannet-verification":{"source":"iana"},"application/vnd.japannet-verification-wakeup":{"source":"iana"},"application/vnd.jcp.javame.midlet-rms":{"source":"iana","extensions":["rms"]},"application/vnd.jisp":{"source":"iana","extensions":["jisp"]},"application/vnd.joost.joda-archive":{"source":"iana","extensions":["joda"]},"application/vnd.jsk.isdn-ngn":{"source":"iana"},"application/vnd.kahootz":{"source":"iana","extensions":["ktz","ktr"]},"application/vnd.kde.karbon":{"source":"iana","extensions":["karbon"]},"application/vnd.kde.kchart":{"source":"iana","extensions":["chrt"]},"application/vnd.kde.kformula":{"source":"iana","extensions":["kfo"]},"application/vnd.kde.kivio":{"source":"iana","extensions":["flw"]},"application/vnd.kde.kontour":{"source":"iana","extensions":["kon"]},"application/vnd.kde.kpresenter":{"source":"iana","extensions":["kpr","kpt"]},"application/vnd.kde.kspread":{"source":"iana","extensions":["ksp"]},"application/vnd.kde.kword":{"source":"iana","extensions":["kwd","kwt"]},"application/vnd.kenameaapp":{"source":"iana","extensions":["htke"]},"application/vnd.kidspiration":{"source":"iana","extensions":["kia"]},"application/vnd.kinar":{"source":"iana","extensions":["kne","knp"]},"application/vnd.koan":{"source":"iana","extensions":["skp","skd","skt","skm"]},"application/vnd.kodak-descriptor":{"source":"iana","extensions":["sse"]},"application/vnd.las":{"source":"iana"},"application/vnd.las.las+json":{"source":"iana","compressible":true},"application/vnd.las.las+xml":{"source":"iana","compressible":true,"extensions":["lasxml"]},"application/vnd.laszip":{"source":"iana"},"application/vnd.leap+json":{"source":"iana","compressible":true},"application/vnd.liberty-request+xml":{"source":"iana","compressible":true},"application/vnd.llamagraphics.life-balance.desktop":{"source":"iana","extensions":["lbd"]},"application/vnd.llamagraphics.life-balance.exchange+xml":{"source":"iana","compressible":true,"extensions":["lbe"]},"application/vnd.logipipe.circuit+zip":{"source":"iana","compressible":false},"application/vnd.loom":{"source":"iana"},"application/vnd.lotus-1-2-3":{"source":"iana","extensions":["123"]},"application/vnd.lotus-approach":{"source":"iana","extensions":["apr"]},"application/vnd.lotus-freelance":{"source":"iana","extensions":["pre"]},"application/vnd.lotus-notes":{"source":"iana","extensions":["nsf"]},"application/vnd.lotus-organizer":{"source":"iana","extensions":["org"]},"application/vnd.lotus-screencam":{"source":"iana","extensions":["scm"]},"application/vnd.lotus-wordpro":{"source":"iana","extensions":["lwp"]},"application/vnd.macports.portpkg":{"source":"iana","extensions":["portpkg"]},"application/vnd.mapbox-vector-tile":{"source":"iana","extensions":["mvt"]},"application/vnd.marlin.drm.actiontoken+xml":{"source":"iana","compressible":true},"application/vnd.marlin.drm.conftoken+xml":{"source":"iana","compressible":true},"application/vnd.marlin.drm.license+xml":{"source":"iana","compressible":true},"application/vnd.marlin.drm.mdcf":{"source":"iana"},"application/vnd.mason+json":{"source":"iana","compressible":true},"application/vnd.maxar.archive.3tz+zip":{"source":"iana","compressible":false},"application/vnd.maxmind.maxmind-db":{"source":"iana"},"application/vnd.mcd":{"source":"iana","extensions":["mcd"]},"application/vnd.medcalcdata":{"source":"iana","extensions":["mc1"]},"application/vnd.mediastation.cdkey":{"source":"iana","extensions":["cdkey"]},"application/vnd.meridian-slingshot":{"source":"iana"},"application/vnd.mfer":{"source":"iana","extensions":["mwf"]},"application/vnd.mfmp":{"source":"iana","extensions":["mfm"]},"application/vnd.micro+json":{"source":"iana","compressible":true},"application/vnd.micrografx.flo":{"source":"iana","extensions":["flo"]},"application/vnd.micrografx.igx":{"source":"iana","extensions":["igx"]},"application/vnd.microsoft.portable-executable":{"source":"iana"},"application/vnd.microsoft.windows.thumbnail-cache":{"source":"iana"},"application/vnd.miele+json":{"source":"iana","compressible":true},"application/vnd.mif":{"source":"iana","extensions":["mif"]},"application/vnd.minisoft-hp3000-save":{"source":"iana"},"application/vnd.mitsubishi.misty-guard.trustweb":{"source":"iana"},"application/vnd.mobius.daf":{"source":"iana","extensions":["daf"]},"application/vnd.mobius.dis":{"source":"iana","extensions":["dis"]},"application/vnd.mobius.mbk":{"source":"iana","extensions":["mbk"]},"application/vnd.mobius.mqy":{"source":"iana","extensions":["mqy"]},"application/vnd.mobius.msl":{"source":"iana","extensions":["msl"]},"application/vnd.mobius.plc":{"source":"iana","extensions":["plc"]},"application/vnd.mobius.txf":{"source":"iana","extensions":["txf"]},"application/vnd.mophun.application":{"source":"iana","extensions":["mpn"]},"application/vnd.mophun.certificate":{"source":"iana","extensions":["mpc"]},"application/vnd.motorola.flexsuite":{"source":"iana"},"application/vnd.motorola.flexsuite.adsi":{"source":"iana"},"application/vnd.motorola.flexsuite.fis":{"source":"iana"},"application/vnd.motorola.flexsuite.gotap":{"source":"iana"},"application/vnd.motorola.flexsuite.kmr":{"source":"iana"},"application/vnd.motorola.flexsuite.ttc":{"source":"iana"},"application/vnd.motorola.flexsuite.wem":{"source":"iana"},"application/vnd.motorola.iprm":{"source":"iana"},"application/vnd.mozilla.xul+xml":{"source":"iana","compressible":true,"extensions":["xul"]},"application/vnd.ms-3mfdocument":{"source":"iana"},"application/vnd.ms-artgalry":{"source":"iana","extensions":["cil"]},"application/vnd.ms-asf":{"source":"iana"},"application/vnd.ms-cab-compressed":{"source":"iana","extensions":["cab"]},"application/vnd.ms-color.iccprofile":{"source":"apache"},"application/vnd.ms-excel":{"source":"iana","compressible":false,"extensions":["xls","xlm","xla","xlc","xlt","xlw"]},"application/vnd.ms-excel.addin.macroenabled.12":{"source":"iana","extensions":["xlam"]},"application/vnd.ms-excel.sheet.binary.macroenabled.12":{"source":"iana","extensions":["xlsb"]},"application/vnd.ms-excel.sheet.macroenabled.12":{"source":"iana","extensions":["xlsm"]},"application/vnd.ms-excel.template.macroenabled.12":{"source":"iana","extensions":["xltm"]},"application/vnd.ms-fontobject":{"source":"iana","compressible":true,"extensions":["eot"]},"application/vnd.ms-htmlhelp":{"source":"iana","extensions":["chm"]},"application/vnd.ms-ims":{"source":"iana","extensions":["ims"]},"application/vnd.ms-lrm":{"source":"iana","extensions":["lrm"]},"application/vnd.ms-office.activex+xml":{"source":"iana","compressible":true},"application/vnd.ms-officetheme":{"source":"iana","extensions":["thmx"]},"application/vnd.ms-opentype":{"source":"apache","compressible":true},"application/vnd.ms-outlook":{"compressible":false,"extensions":["msg"]},"application/vnd.ms-package.obfuscated-opentype":{"source":"apache"},"application/vnd.ms-pki.seccat":{"source":"apache","extensions":["cat"]},"application/vnd.ms-pki.stl":{"source":"apache","extensions":["stl"]},"application/vnd.ms-playready.initiator+xml":{"source":"iana","compressible":true},"application/vnd.ms-powerpoint":{"source":"iana","compressible":false,"extensions":["ppt","pps","pot"]},"application/vnd.ms-powerpoint.addin.macroenabled.12":{"source":"iana","extensions":["ppam"]},"application/vnd.ms-powerpoint.presentation.macroenabled.12":{"source":"iana","extensions":["pptm"]},"application/vnd.ms-powerpoint.slide.macroenabled.12":{"source":"iana","extensions":["sldm"]},"application/vnd.ms-powerpoint.slideshow.macroenabled.12":{"source":"iana","extensions":["ppsm"]},"application/vnd.ms-powerpoint.template.macroenabled.12":{"source":"iana","extensions":["potm"]},"application/vnd.ms-printdevicecapabilities+xml":{"source":"iana","compressible":true},"application/vnd.ms-printing.printticket+xml":{"source":"apache","compressible":true},"application/vnd.ms-printschematicket+xml":{"source":"iana","compressible":true},"application/vnd.ms-project":{"source":"iana","extensions":["mpp","mpt"]},"application/vnd.ms-tnef":{"source":"iana"},"application/vnd.ms-windows.devicepairing":{"source":"iana"},"application/vnd.ms-windows.nwprinting.oob":{"source":"iana"},"application/vnd.ms-windows.printerpairing":{"source":"iana"},"application/vnd.ms-windows.wsd.oob":{"source":"iana"},"application/vnd.ms-wmdrm.lic-chlg-req":{"source":"iana"},"application/vnd.ms-wmdrm.lic-resp":{"source":"iana"},"application/vnd.ms-wmdrm.meter-chlg-req":{"source":"iana"},"application/vnd.ms-wmdrm.meter-resp":{"source":"iana"},"application/vnd.ms-word.document.macroenabled.12":{"source":"iana","extensions":["docm"]},"application/vnd.ms-word.template.macroenabled.12":{"source":"iana","extensions":["dotm"]},"application/vnd.ms-works":{"source":"iana","extensions":["wps","wks","wcm","wdb"]},"application/vnd.ms-wpl":{"source":"iana","extensions":["wpl"]},"application/vnd.ms-xpsdocument":{"source":"iana","compressible":false,"extensions":["xps"]},"application/vnd.msa-disk-image":{"source":"iana"},"application/vnd.mseq":{"source":"iana","extensions":["mseq"]},"application/vnd.msign":{"source":"iana"},"application/vnd.multiad.creator":{"source":"iana"},"application/vnd.multiad.creator.cif":{"source":"iana"},"application/vnd.music-niff":{"source":"iana"},"application/vnd.musician":{"source":"iana","extensions":["mus"]},"application/vnd.muvee.style":{"source":"iana","extensions":["msty"]},"application/vnd.mynfc":{"source":"iana","extensions":["taglet"]},"application/vnd.nacamar.ybrid+json":{"source":"iana","compressible":true},"application/vnd.ncd.control":{"source":"iana"},"application/vnd.ncd.reference":{"source":"iana"},"application/vnd.nearst.inv+json":{"source":"iana","compressible":true},"application/vnd.nebumind.line":{"source":"iana"},"application/vnd.nervana":{"source":"iana"},"application/vnd.netfpx":{"source":"iana"},"application/vnd.neurolanguage.nlu":{"source":"iana","extensions":["nlu"]},"application/vnd.nimn":{"source":"iana"},"application/vnd.nintendo.nitro.rom":{"source":"iana"},"application/vnd.nintendo.snes.rom":{"source":"iana"},"application/vnd.nitf":{"source":"iana","extensions":["ntf","nitf"]},"application/vnd.noblenet-directory":{"source":"iana","extensions":["nnd"]},"application/vnd.noblenet-sealer":{"source":"iana","extensions":["nns"]},"application/vnd.noblenet-web":{"source":"iana","extensions":["nnw"]},"application/vnd.nokia.catalogs":{"source":"iana"},"application/vnd.nokia.conml+wbxml":{"source":"iana"},"application/vnd.nokia.conml+xml":{"source":"iana","compressible":true},"application/vnd.nokia.iptv.config+xml":{"source":"iana","compressible":true},"application/vnd.nokia.isds-radio-presets":{"source":"iana"},"application/vnd.nokia.landmark+wbxml":{"source":"iana"},"application/vnd.nokia.landmark+xml":{"source":"iana","compressible":true},"application/vnd.nokia.landmarkcollection+xml":{"source":"iana","compressible":true},"application/vnd.nokia.n-gage.ac+xml":{"source":"iana","compressible":true,"extensions":["ac"]},"application/vnd.nokia.n-gage.data":{"source":"iana","extensions":["ngdat"]},"application/vnd.nokia.n-gage.symbian.install":{"source":"iana","extensions":["n-gage"]},"application/vnd.nokia.ncd":{"source":"iana"},"application/vnd.nokia.pcd+wbxml":{"source":"iana"},"application/vnd.nokia.pcd+xml":{"source":"iana","compressible":true},"application/vnd.nokia.radio-preset":{"source":"iana","extensions":["rpst"]},"application/vnd.nokia.radio-presets":{"source":"iana","extensions":["rpss"]},"application/vnd.novadigm.edm":{"source":"iana","extensions":["edm"]},"application/vnd.novadigm.edx":{"source":"iana","extensions":["edx"]},"application/vnd.novadigm.ext":{"source":"iana","extensions":["ext"]},"application/vnd.ntt-local.content-share":{"source":"iana"},"application/vnd.ntt-local.file-transfer":{"source":"iana"},"application/vnd.ntt-local.ogw_remote-access":{"source":"iana"},"application/vnd.ntt-local.sip-ta_remote":{"source":"iana"},"application/vnd.ntt-local.sip-ta_tcp_stream":{"source":"iana"},"application/vnd.oasis.opendocument.chart":{"source":"iana","extensions":["odc"]},"application/vnd.oasis.opendocument.chart-template":{"source":"iana","extensions":["otc"]},"application/vnd.oasis.opendocument.database":{"source":"iana","extensions":["odb"]},"application/vnd.oasis.opendocument.formula":{"source":"iana","extensions":["odf"]},"application/vnd.oasis.opendocument.formula-template":{"source":"iana","extensions":["odft"]},"application/vnd.oasis.opendocument.graphics":{"source":"iana","compressible":false,"extensions":["odg"]},"application/vnd.oasis.opendocument.graphics-template":{"source":"iana","extensions":["otg"]},"application/vnd.oasis.opendocument.image":{"source":"iana","extensions":["odi"]},"application/vnd.oasis.opendocument.image-template":{"source":"iana","extensions":["oti"]},"application/vnd.oasis.opendocument.presentation":{"source":"iana","compressible":false,"extensions":["odp"]},"application/vnd.oasis.opendocument.presentation-template":{"source":"iana","extensions":["otp"]},"application/vnd.oasis.opendocument.spreadsheet":{"source":"iana","compressible":false,"extensions":["ods"]},"application/vnd.oasis.opendocument.spreadsheet-template":{"source":"iana","extensions":["ots"]},"application/vnd.oasis.opendocument.text":{"source":"iana","compressible":false,"extensions":["odt"]},"application/vnd.oasis.opendocument.text-master":{"source":"iana","extensions":["odm"]},"application/vnd.oasis.opendocument.text-template":{"source":"iana","extensions":["ott"]},"application/vnd.oasis.opendocument.text-web":{"source":"iana","extensions":["oth"]},"application/vnd.obn":{"source":"iana"},"application/vnd.ocf+cbor":{"source":"iana"},"application/vnd.oci.image.manifest.v1+json":{"source":"iana","compressible":true},"application/vnd.oftn.l10n+json":{"source":"iana","compressible":true},"application/vnd.oipf.contentaccessdownload+xml":{"source":"iana","compressible":true},"application/vnd.oipf.contentaccessstreaming+xml":{"source":"iana","compressible":true},"application/vnd.oipf.cspg-hexbinary":{"source":"iana"},"application/vnd.oipf.dae.svg+xml":{"source":"iana","compressible":true},"application/vnd.oipf.dae.xhtml+xml":{"source":"iana","compressible":true},"application/vnd.oipf.mippvcontrolmessage+xml":{"source":"iana","compressible":true},"application/vnd.oipf.pae.gem":{"source":"iana"},"application/vnd.oipf.spdiscovery+xml":{"source":"iana","compressible":true},"application/vnd.oipf.spdlist+xml":{"source":"iana","compressible":true},"application/vnd.oipf.ueprofile+xml":{"source":"iana","compressible":true},"application/vnd.oipf.userprofile+xml":{"source":"iana","compressible":true},"application/vnd.olpc-sugar":{"source":"iana","extensions":["xo"]},"application/vnd.oma-scws-config":{"source":"iana"},"application/vnd.oma-scws-http-request":{"source":"iana"},"application/vnd.oma-scws-http-response":{"source":"iana"},"application/vnd.oma.bcast.associated-procedure-parameter+xml":{"source":"iana","compressible":true},"application/vnd.oma.bcast.drm-trigger+xml":{"source":"iana","compressible":true},"application/vnd.oma.bcast.imd+xml":{"source":"iana","compressible":true},"application/vnd.oma.bcast.ltkm":{"source":"iana"},"application/vnd.oma.bcast.notification+xml":{"source":"iana","compressible":true},"application/vnd.oma.bcast.provisioningtrigger":{"source":"iana"},"application/vnd.oma.bcast.sgboot":{"source":"iana"},"application/vnd.oma.bcast.sgdd+xml":{"source":"iana","compressible":true},"application/vnd.oma.bcast.sgdu":{"source":"iana"},"application/vnd.oma.bcast.simple-symbol-container":{"source":"iana"},"application/vnd.oma.bcast.smartcard-trigger+xml":{"source":"iana","compressible":true},"application/vnd.oma.bcast.sprov+xml":{"source":"iana","compressible":true},"application/vnd.oma.bcast.stkm":{"source":"iana"},"application/vnd.oma.cab-address-book+xml":{"source":"iana","compressible":true},"application/vnd.oma.cab-feature-handler+xml":{"source":"iana","compressible":true},"application/vnd.oma.cab-pcc+xml":{"source":"iana","compressible":true},"application/vnd.oma.cab-subs-invite+xml":{"source":"iana","compressible":true},"application/vnd.oma.cab-user-prefs+xml":{"source":"iana","compressible":true},"application/vnd.oma.dcd":{"source":"iana"},"application/vnd.oma.dcdc":{"source":"iana"},"application/vnd.oma.dd2+xml":{"source":"iana","compressible":true,"extensions":["dd2"]},"application/vnd.oma.drm.risd+xml":{"source":"iana","compressible":true},"application/vnd.oma.group-usage-list+xml":{"source":"iana","compressible":true},"application/vnd.oma.lwm2m+cbor":{"source":"iana"},"application/vnd.oma.lwm2m+json":{"source":"iana","compressible":true},"application/vnd.oma.lwm2m+tlv":{"source":"iana"},"application/vnd.oma.pal+xml":{"source":"iana","compressible":true},"application/vnd.oma.poc.detailed-progress-report+xml":{"source":"iana","compressible":true},"application/vnd.oma.poc.final-report+xml":{"source":"iana","compressible":true},"application/vnd.oma.poc.groups+xml":{"source":"iana","compressible":true},"application/vnd.oma.poc.invocation-descriptor+xml":{"source":"iana","compressible":true},"application/vnd.oma.poc.optimized-progress-report+xml":{"source":"iana","compressible":true},"application/vnd.oma.push":{"source":"iana"},"application/vnd.oma.scidm.messages+xml":{"source":"iana","compressible":true},"application/vnd.oma.xcap-directory+xml":{"source":"iana","compressible":true},"application/vnd.omads-email+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/vnd.omads-file+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/vnd.omads-folder+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/vnd.omaloc-supl-init":{"source":"iana"},"application/vnd.onepager":{"source":"iana"},"application/vnd.onepagertamp":{"source":"iana"},"application/vnd.onepagertamx":{"source":"iana"},"application/vnd.onepagertat":{"source":"iana"},"application/vnd.onepagertatp":{"source":"iana"},"application/vnd.onepagertatx":{"source":"iana"},"application/vnd.openblox.game+xml":{"source":"iana","compressible":true,"extensions":["obgx"]},"application/vnd.openblox.game-binary":{"source":"iana"},"application/vnd.openeye.oeb":{"source":"iana"},"application/vnd.openofficeorg.extension":{"source":"apache","extensions":["oxt"]},"application/vnd.openstreetmap.data+xml":{"source":"iana","compressible":true,"extensions":["osm"]},"application/vnd.opentimestamps.ots":{"source":"iana"},"application/vnd.openxmlformats-officedocument.custom-properties+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.customxmlproperties+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.drawing+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.drawingml.chart+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.drawingml.chartshapes+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.drawingml.diagramcolors+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.drawingml.diagramdata+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.drawingml.diagramlayout+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.drawingml.diagramstyle+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.extended-properties+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.commentauthors+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.comments+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.handoutmaster+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.notesmaster+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.notesslide+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.presentation":{"source":"iana","compressible":false,"extensions":["pptx"]},"application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.presprops+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.slide":{"source":"iana","extensions":["sldx"]},"application/vnd.openxmlformats-officedocument.presentationml.slide+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.slidelayout+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.slidemaster+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.slideshow":{"source":"iana","extensions":["ppsx"]},"application/vnd.openxmlformats-officedocument.presentationml.slideshow.main+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.slideupdateinfo+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.tablestyles+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.tags+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.template":{"source":"iana","extensions":["potx"]},"application/vnd.openxmlformats-officedocument.presentationml.template.main+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.viewprops+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.calcchain+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.chartsheet+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.connections+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.dialogsheet+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.externallink+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.pivotcachedefinition+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.pivotcacherecords+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.pivottable+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.querytable+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.revisionheaders+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.revisionlog+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.sharedstrings+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":{"source":"iana","compressible":false,"extensions":["xlsx"]},"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.sheetmetadata+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.tablesinglecells+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.template":{"source":"iana","extensions":["xltx"]},"application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.usernames+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.volatiledependencies+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.theme+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.themeoverride+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.vmldrawing":{"source":"iana"},"application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.wordprocessingml.document":{"source":"iana","compressible":false,"extensions":["docx"]},"application/vnd.openxmlformats-officedocument.wordprocessingml.document.glossary+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.wordprocessingml.fonttable+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.wordprocessingml.template":{"source":"iana","extensions":["dotx"]},"application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.wordprocessingml.websettings+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-package.core-properties+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-package.digital-signature-xmlsignature+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-package.relationships+xml":{"source":"iana","compressible":true},"application/vnd.oracle.resource+json":{"source":"iana","compressible":true},"application/vnd.orange.indata":{"source":"iana"},"application/vnd.osa.netdeploy":{"source":"iana"},"application/vnd.osgeo.mapguide.package":{"source":"iana","extensions":["mgp"]},"application/vnd.osgi.bundle":{"source":"iana"},"application/vnd.osgi.dp":{"source":"iana","extensions":["dp"]},"application/vnd.osgi.subsystem":{"source":"iana","extensions":["esa"]},"application/vnd.otps.ct-kip+xml":{"source":"iana","compressible":true},"application/vnd.oxli.countgraph":{"source":"iana"},"application/vnd.pagerduty+json":{"source":"iana","compressible":true},"application/vnd.palm":{"source":"iana","extensions":["pdb","pqa","oprc"]},"application/vnd.panoply":{"source":"iana"},"application/vnd.paos.xml":{"source":"iana"},"application/vnd.patentdive":{"source":"iana"},"application/vnd.patientecommsdoc":{"source":"iana"},"application/vnd.pawaafile":{"source":"iana","extensions":["paw"]},"application/vnd.pcos":{"source":"iana"},"application/vnd.pg.format":{"source":"iana","extensions":["str"]},"application/vnd.pg.osasli":{"source":"iana","extensions":["ei6"]},"application/vnd.piaccess.application-licence":{"source":"iana"},"application/vnd.picsel":{"source":"iana","extensions":["efif"]},"application/vnd.pmi.widget":{"source":"iana","extensions":["wg"]},"application/vnd.poc.group-advertisement+xml":{"source":"iana","compressible":true},"application/vnd.pocketlearn":{"source":"iana","extensions":["plf"]},"application/vnd.powerbuilder6":{"source":"iana","extensions":["pbd"]},"application/vnd.powerbuilder6-s":{"source":"iana"},"application/vnd.powerbuilder7":{"source":"iana"},"application/vnd.powerbuilder7-s":{"source":"iana"},"application/vnd.powerbuilder75":{"source":"iana"},"application/vnd.powerbuilder75-s":{"source":"iana"},"application/vnd.preminet":{"source":"iana"},"application/vnd.previewsystems.box":{"source":"iana","extensions":["box"]},"application/vnd.proteus.magazine":{"source":"iana","extensions":["mgz"]},"application/vnd.psfs":{"source":"iana"},"application/vnd.publishare-delta-tree":{"source":"iana","extensions":["qps"]},"application/vnd.pvi.ptid1":{"source":"iana","extensions":["ptid"]},"application/vnd.pwg-multiplexed":{"source":"iana"},"application/vnd.pwg-xhtml-print+xml":{"source":"iana","compressible":true},"application/vnd.qualcomm.brew-app-res":{"source":"iana"},"application/vnd.quarantainenet":{"source":"iana"},"application/vnd.quark.quarkxpress":{"source":"iana","extensions":["qxd","qxt","qwd","qwt","qxl","qxb"]},"application/vnd.quobject-quoxdocument":{"source":"iana"},"application/vnd.radisys.moml+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-audit+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-audit-conf+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-audit-conn+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-audit-dialog+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-audit-stream+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-conf+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-dialog+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-dialog-base+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-dialog-fax-detect+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-dialog-fax-sendrecv+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-dialog-group+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-dialog-speech+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-dialog-transform+xml":{"source":"iana","compressible":true},"application/vnd.rainstor.data":{"source":"iana"},"application/vnd.rapid":{"source":"iana"},"application/vnd.rar":{"source":"iana","extensions":["rar"]},"application/vnd.realvnc.bed":{"source":"iana","extensions":["bed"]},"application/vnd.recordare.musicxml":{"source":"iana","extensions":["mxl"]},"application/vnd.recordare.musicxml+xml":{"source":"iana","compressible":true,"extensions":["musicxml"]},"application/vnd.renlearn.rlprint":{"source":"iana"},"application/vnd.resilient.logic":{"source":"iana"},"application/vnd.restful+json":{"source":"iana","compressible":true},"application/vnd.rig.cryptonote":{"source":"iana","extensions":["cryptonote"]},"application/vnd.rim.cod":{"source":"apache","extensions":["cod"]},"application/vnd.rn-realmedia":{"source":"apache","extensions":["rm"]},"application/vnd.rn-realmedia-vbr":{"source":"apache","extensions":["rmvb"]},"application/vnd.route66.link66+xml":{"source":"iana","compressible":true,"extensions":["link66"]},"application/vnd.rs-274x":{"source":"iana"},"application/vnd.ruckus.download":{"source":"iana"},"application/vnd.s3sms":{"source":"iana"},"application/vnd.sailingtracker.track":{"source":"iana","extensions":["st"]},"application/vnd.sar":{"source":"iana"},"application/vnd.sbm.cid":{"source":"iana"},"application/vnd.sbm.mid2":{"source":"iana"},"application/vnd.scribus":{"source":"iana"},"application/vnd.sealed.3df":{"source":"iana"},"application/vnd.sealed.csf":{"source":"iana"},"application/vnd.sealed.doc":{"source":"iana"},"application/vnd.sealed.eml":{"source":"iana"},"application/vnd.sealed.mht":{"source":"iana"},"application/vnd.sealed.net":{"source":"iana"},"application/vnd.sealed.ppt":{"source":"iana"},"application/vnd.sealed.tiff":{"source":"iana"},"application/vnd.sealed.xls":{"source":"iana"},"application/vnd.sealedmedia.softseal.html":{"source":"iana"},"application/vnd.sealedmedia.softseal.pdf":{"source":"iana"},"application/vnd.seemail":{"source":"iana","extensions":["see"]},"application/vnd.seis+json":{"source":"iana","compressible":true},"application/vnd.sema":{"source":"iana","extensions":["sema"]},"application/vnd.semd":{"source":"iana","extensions":["semd"]},"application/vnd.semf":{"source":"iana","extensions":["semf"]},"application/vnd.shade-save-file":{"source":"iana"},"application/vnd.shana.informed.formdata":{"source":"iana","extensions":["ifm"]},"application/vnd.shana.informed.formtemplate":{"source":"iana","extensions":["itp"]},"application/vnd.shana.informed.interchange":{"source":"iana","extensions":["iif"]},"application/vnd.shana.informed.package":{"source":"iana","extensions":["ipk"]},"application/vnd.shootproof+json":{"source":"iana","compressible":true},"application/vnd.shopkick+json":{"source":"iana","compressible":true},"application/vnd.shp":{"source":"iana"},"application/vnd.shx":{"source":"iana"},"application/vnd.sigrok.session":{"source":"iana"},"application/vnd.simtech-mindmapper":{"source":"iana","extensions":["twd","twds"]},"application/vnd.siren+json":{"source":"iana","compressible":true},"application/vnd.smaf":{"source":"iana","extensions":["mmf"]},"application/vnd.smart.notebook":{"source":"iana"},"application/vnd.smart.teacher":{"source":"iana","extensions":["teacher"]},"application/vnd.snesdev-page-table":{"source":"iana"},"application/vnd.software602.filler.form+xml":{"source":"iana","compressible":true,"extensions":["fo"]},"application/vnd.software602.filler.form-xml-zip":{"source":"iana"},"application/vnd.solent.sdkm+xml":{"source":"iana","compressible":true,"extensions":["sdkm","sdkd"]},"application/vnd.spotfire.dxp":{"source":"iana","extensions":["dxp"]},"application/vnd.spotfire.sfs":{"source":"iana","extensions":["sfs"]},"application/vnd.sqlite3":{"source":"iana"},"application/vnd.sss-cod":{"source":"iana"},"application/vnd.sss-dtf":{"source":"iana"},"application/vnd.sss-ntf":{"source":"iana"},"application/vnd.stardivision.calc":{"source":"apache","extensions":["sdc"]},"application/vnd.stardivision.draw":{"source":"apache","extensions":["sda"]},"application/vnd.stardivision.impress":{"source":"apache","extensions":["sdd"]},"application/vnd.stardivision.math":{"source":"apache","extensions":["smf"]},"application/vnd.stardivision.writer":{"source":"apache","extensions":["sdw","vor"]},"application/vnd.stardivision.writer-global":{"source":"apache","extensions":["sgl"]},"application/vnd.stepmania.package":{"source":"iana","extensions":["smzip"]},"application/vnd.stepmania.stepchart":{"source":"iana","extensions":["sm"]},"application/vnd.street-stream":{"source":"iana"},"application/vnd.sun.wadl+xml":{"source":"iana","compressible":true,"extensions":["wadl"]},"application/vnd.sun.xml.calc":{"source":"apache","extensions":["sxc"]},"application/vnd.sun.xml.calc.template":{"source":"apache","extensions":["stc"]},"application/vnd.sun.xml.draw":{"source":"apache","extensions":["sxd"]},"application/vnd.sun.xml.draw.template":{"source":"apache","extensions":["std"]},"application/vnd.sun.xml.impress":{"source":"apache","extensions":["sxi"]},"application/vnd.sun.xml.impress.template":{"source":"apache","extensions":["sti"]},"application/vnd.sun.xml.math":{"source":"apache","extensions":["sxm"]},"application/vnd.sun.xml.writer":{"source":"apache","extensions":["sxw"]},"application/vnd.sun.xml.writer.global":{"source":"apache","extensions":["sxg"]},"application/vnd.sun.xml.writer.template":{"source":"apache","extensions":["stw"]},"application/vnd.sus-calendar":{"source":"iana","extensions":["sus","susp"]},"application/vnd.svd":{"source":"iana","extensions":["svd"]},"application/vnd.swiftview-ics":{"source":"iana"},"application/vnd.sycle+xml":{"source":"iana","compressible":true},"application/vnd.syft+json":{"source":"iana","compressible":true},"application/vnd.symbian.install":{"source":"apache","extensions":["sis","sisx"]},"application/vnd.syncml+xml":{"source":"iana","charset":"UTF-8","compressible":true,"extensions":["xsm"]},"application/vnd.syncml.dm+wbxml":{"source":"iana","charset":"UTF-8","extensions":["bdm"]},"application/vnd.syncml.dm+xml":{"source":"iana","charset":"UTF-8","compressible":true,"extensions":["xdm"]},"application/vnd.syncml.dm.notification":{"source":"iana"},"application/vnd.syncml.dmddf+wbxml":{"source":"iana"},"application/vnd.syncml.dmddf+xml":{"source":"iana","charset":"UTF-8","compressible":true,"extensions":["ddf"]},"application/vnd.syncml.dmtnds+wbxml":{"source":"iana"},"application/vnd.syncml.dmtnds+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/vnd.syncml.ds.notification":{"source":"iana"},"application/vnd.tableschema+json":{"source":"iana","compressible":true},"application/vnd.tao.intent-module-archive":{"source":"iana","extensions":["tao"]},"application/vnd.tcpdump.pcap":{"source":"iana","extensions":["pcap","cap","dmp"]},"application/vnd.think-cell.ppttc+json":{"source":"iana","compressible":true},"application/vnd.tmd.mediaflex.api+xml":{"source":"iana","compressible":true},"application/vnd.tml":{"source":"iana"},"application/vnd.tmobile-livetv":{"source":"iana","extensions":["tmo"]},"application/vnd.tri.onesource":{"source":"iana"},"application/vnd.trid.tpt":{"source":"iana","extensions":["tpt"]},"application/vnd.triscape.mxs":{"source":"iana","extensions":["mxs"]},"application/vnd.trueapp":{"source":"iana","extensions":["tra"]},"application/vnd.truedoc":{"source":"iana"},"application/vnd.ubisoft.webplayer":{"source":"iana"},"application/vnd.ufdl":{"source":"iana","extensions":["ufd","ufdl"]},"application/vnd.uiq.theme":{"source":"iana","extensions":["utz"]},"application/vnd.umajin":{"source":"iana","extensions":["umj"]},"application/vnd.unity":{"source":"iana","extensions":["unityweb"]},"application/vnd.uoml+xml":{"source":"iana","compressible":true,"extensions":["uoml"]},"application/vnd.uplanet.alert":{"source":"iana"},"application/vnd.uplanet.alert-wbxml":{"source":"iana"},"application/vnd.uplanet.bearer-choice":{"source":"iana"},"application/vnd.uplanet.bearer-choice-wbxml":{"source":"iana"},"application/vnd.uplanet.cacheop":{"source":"iana"},"application/vnd.uplanet.cacheop-wbxml":{"source":"iana"},"application/vnd.uplanet.channel":{"source":"iana"},"application/vnd.uplanet.channel-wbxml":{"source":"iana"},"application/vnd.uplanet.list":{"source":"iana"},"application/vnd.uplanet.list-wbxml":{"source":"iana"},"application/vnd.uplanet.listcmd":{"source":"iana"},"application/vnd.uplanet.listcmd-wbxml":{"source":"iana"},"application/vnd.uplanet.signal":{"source":"iana"},"application/vnd.uri-map":{"source":"iana"},"application/vnd.valve.source.material":{"source":"iana"},"application/vnd.vcx":{"source":"iana","extensions":["vcx"]},"application/vnd.vd-study":{"source":"iana"},"application/vnd.vectorworks":{"source":"iana"},"application/vnd.vel+json":{"source":"iana","compressible":true},"application/vnd.verimatrix.vcas":{"source":"iana"},"application/vnd.veritone.aion+json":{"source":"iana","compressible":true},"application/vnd.veryant.thin":{"source":"iana"},"application/vnd.ves.encrypted":{"source":"iana"},"application/vnd.vidsoft.vidconference":{"source":"iana"},"application/vnd.visio":{"source":"iana","extensions":["vsd","vst","vss","vsw"]},"application/vnd.visionary":{"source":"iana","extensions":["vis"]},"application/vnd.vividence.scriptfile":{"source":"iana"},"application/vnd.vsf":{"source":"iana","extensions":["vsf"]},"application/vnd.wap.sic":{"source":"iana"},"application/vnd.wap.slc":{"source":"iana"},"application/vnd.wap.wbxml":{"source":"iana","charset":"UTF-8","extensions":["wbxml"]},"application/vnd.wap.wmlc":{"source":"iana","extensions":["wmlc"]},"application/vnd.wap.wmlscriptc":{"source":"iana","extensions":["wmlsc"]},"application/vnd.webturbo":{"source":"iana","extensions":["wtb"]},"application/vnd.wfa.dpp":{"source":"iana"},"application/vnd.wfa.p2p":{"source":"iana"},"application/vnd.wfa.wsc":{"source":"iana"},"application/vnd.windows.devicepairing":{"source":"iana"},"application/vnd.wmc":{"source":"iana"},"application/vnd.wmf.bootstrap":{"source":"iana"},"application/vnd.wolfram.mathematica":{"source":"iana"},"application/vnd.wolfram.mathematica.package":{"source":"iana"},"application/vnd.wolfram.player":{"source":"iana","extensions":["nbp"]},"application/vnd.wordperfect":{"source":"iana","extensions":["wpd"]},"application/vnd.wqd":{"source":"iana","extensions":["wqd"]},"application/vnd.wrq-hp3000-labelled":{"source":"iana"},"application/vnd.wt.stf":{"source":"iana","extensions":["stf"]},"application/vnd.wv.csp+wbxml":{"source":"iana"},"application/vnd.wv.csp+xml":{"source":"iana","compressible":true},"application/vnd.wv.ssp+xml":{"source":"iana","compressible":true},"application/vnd.xacml+json":{"source":"iana","compressible":true},"application/vnd.xara":{"source":"iana","extensions":["xar"]},"application/vnd.xfdl":{"source":"iana","extensions":["xfdl"]},"application/vnd.xfdl.webform":{"source":"iana"},"application/vnd.xmi+xml":{"source":"iana","compressible":true},"application/vnd.xmpie.cpkg":{"source":"iana"},"application/vnd.xmpie.dpkg":{"source":"iana"},"application/vnd.xmpie.plan":{"source":"iana"},"application/vnd.xmpie.ppkg":{"source":"iana"},"application/vnd.xmpie.xlim":{"source":"iana"},"application/vnd.yamaha.hv-dic":{"source":"iana","extensions":["hvd"]},"application/vnd.yamaha.hv-script":{"source":"iana","extensions":["hvs"]},"application/vnd.yamaha.hv-voice":{"source":"iana","extensions":["hvp"]},"application/vnd.yamaha.openscoreformat":{"source":"iana","extensions":["osf"]},"application/vnd.yamaha.openscoreformat.osfpvg+xml":{"source":"iana","compressible":true,"extensions":["osfpvg"]},"application/vnd.yamaha.remote-setup":{"source":"iana"},"application/vnd.yamaha.smaf-audio":{"source":"iana","extensions":["saf"]},"application/vnd.yamaha.smaf-phrase":{"source":"iana","extensions":["spf"]},"application/vnd.yamaha.through-ngn":{"source":"iana"},"application/vnd.yamaha.tunnel-udpencap":{"source":"iana"},"application/vnd.yaoweme":{"source":"iana"},"application/vnd.yellowriver-custom-menu":{"source":"iana","extensions":["cmp"]},"application/vnd.youtube.yt":{"source":"iana"},"application/vnd.zul":{"source":"iana","extensions":["zir","zirz"]},"application/vnd.zzazz.deck+xml":{"source":"iana","compressible":true,"extensions":["zaz"]},"application/voicexml+xml":{"source":"iana","compressible":true,"extensions":["vxml"]},"application/voucher-cms+json":{"source":"iana","compressible":true},"application/vq-rtcpxr":{"source":"iana"},"application/wasm":{"source":"iana","compressible":true,"extensions":["wasm"]},"application/watcherinfo+xml":{"source":"iana","compressible":true,"extensions":["wif"]},"application/webpush-options+json":{"source":"iana","compressible":true},"application/whoispp-query":{"source":"iana"},"application/whoispp-response":{"source":"iana"},"application/widget":{"source":"iana","extensions":["wgt"]},"application/winhlp":{"source":"apache","extensions":["hlp"]},"application/wita":{"source":"iana"},"application/wordperfect5.1":{"source":"iana"},"application/wsdl+xml":{"source":"iana","compressible":true,"extensions":["wsdl"]},"application/wspolicy+xml":{"source":"iana","compressible":true,"extensions":["wspolicy"]},"application/x-7z-compressed":{"source":"apache","compressible":false,"extensions":["7z"]},"application/x-abiword":{"source":"apache","extensions":["abw"]},"application/x-ace-compressed":{"source":"apache","extensions":["ace"]},"application/x-amf":{"source":"apache"},"application/x-apple-diskimage":{"source":"apache","extensions":["dmg"]},"application/x-arj":{"compressible":false,"extensions":["arj"]},"application/x-authorware-bin":{"source":"apache","extensions":["aab","x32","u32","vox"]},"application/x-authorware-map":{"source":"apache","extensions":["aam"]},"application/x-authorware-seg":{"source":"apache","extensions":["aas"]},"application/x-bcpio":{"source":"apache","extensions":["bcpio"]},"application/x-bdoc":{"compressible":false,"extensions":["bdoc"]},"application/x-bittorrent":{"source":"apache","extensions":["torrent"]},"application/x-blorb":{"source":"apache","extensions":["blb","blorb"]},"application/x-bzip":{"source":"apache","compressible":false,"extensions":["bz"]},"application/x-bzip2":{"source":"apache","compressible":false,"extensions":["bz2","boz"]},"application/x-cbr":{"source":"apache","extensions":["cbr","cba","cbt","cbz","cb7"]},"application/x-cdlink":{"source":"apache","extensions":["vcd"]},"application/x-cfs-compressed":{"source":"apache","extensions":["cfs"]},"application/x-chat":{"source":"apache","extensions":["chat"]},"application/x-chess-pgn":{"source":"apache","extensions":["pgn"]},"application/x-chrome-extension":{"extensions":["crx"]},"application/x-cocoa":{"source":"nginx","extensions":["cco"]},"application/x-compress":{"source":"apache"},"application/x-conference":{"source":"apache","extensions":["nsc"]},"application/x-cpio":{"source":"apache","extensions":["cpio"]},"application/x-csh":{"source":"apache","extensions":["csh"]},"application/x-deb":{"compressible":false},"application/x-debian-package":{"source":"apache","extensions":["deb","udeb"]},"application/x-dgc-compressed":{"source":"apache","extensions":["dgc"]},"application/x-director":{"source":"apache","extensions":["dir","dcr","dxr","cst","cct","cxt","w3d","fgd","swa"]},"application/x-doom":{"source":"apache","extensions":["wad"]},"application/x-dtbncx+xml":{"source":"apache","compressible":true,"extensions":["ncx"]},"application/x-dtbook+xml":{"source":"apache","compressible":true,"extensions":["dtb"]},"application/x-dtbresource+xml":{"source":"apache","compressible":true,"extensions":["res"]},"application/x-dvi":{"source":"apache","compressible":false,"extensions":["dvi"]},"application/x-envoy":{"source":"apache","extensions":["evy"]},"application/x-eva":{"source":"apache","extensions":["eva"]},"application/x-font-bdf":{"source":"apache","extensions":["bdf"]},"application/x-font-dos":{"source":"apache"},"application/x-font-framemaker":{"source":"apache"},"application/x-font-ghostscript":{"source":"apache","extensions":["gsf"]},"application/x-font-libgrx":{"source":"apache"},"application/x-font-linux-psf":{"source":"apache","extensions":["psf"]},"application/x-font-pcf":{"source":"apache","extensions":["pcf"]},"application/x-font-snf":{"source":"apache","extensions":["snf"]},"application/x-font-speedo":{"source":"apache"},"application/x-font-sunos-news":{"source":"apache"},"application/x-font-type1":{"source":"apache","extensions":["pfa","pfb","pfm","afm"]},"application/x-font-vfont":{"source":"apache"},"application/x-freearc":{"source":"apache","extensions":["arc"]},"application/x-futuresplash":{"source":"apache","extensions":["spl"]},"application/x-gca-compressed":{"source":"apache","extensions":["gca"]},"application/x-glulx":{"source":"apache","extensions":["ulx"]},"application/x-gnumeric":{"source":"apache","extensions":["gnumeric"]},"application/x-gramps-xml":{"source":"apache","extensions":["gramps"]},"application/x-gtar":{"source":"apache","extensions":["gtar"]},"application/x-gzip":{"source":"apache"},"application/x-hdf":{"source":"apache","extensions":["hdf"]},"application/x-httpd-php":{"compressible":true,"extensions":["php"]},"application/x-install-instructions":{"source":"apache","extensions":["install"]},"application/x-iso9660-image":{"source":"apache","extensions":["iso"]},"application/x-iwork-keynote-sffkey":{"extensions":["key"]},"application/x-iwork-numbers-sffnumbers":{"extensions":["numbers"]},"application/x-iwork-pages-sffpages":{"extensions":["pages"]},"application/x-java-archive-diff":{"source":"nginx","extensions":["jardiff"]},"application/x-java-jnlp-file":{"source":"apache","compressible":false,"extensions":["jnlp"]},"application/x-javascript":{"compressible":true},"application/x-keepass2":{"extensions":["kdbx"]},"application/x-latex":{"source":"apache","compressible":false,"extensions":["latex"]},"application/x-lua-bytecode":{"extensions":["luac"]},"application/x-lzh-compressed":{"source":"apache","extensions":["lzh","lha"]},"application/x-makeself":{"source":"nginx","extensions":["run"]},"application/x-mie":{"source":"apache","extensions":["mie"]},"application/x-mobipocket-ebook":{"source":"apache","extensions":["prc","mobi"]},"application/x-mpegurl":{"compressible":false},"application/x-ms-application":{"source":"apache","extensions":["application"]},"application/x-ms-shortcut":{"source":"apache","extensions":["lnk"]},"application/x-ms-wmd":{"source":"apache","extensions":["wmd"]},"application/x-ms-wmz":{"source":"apache","extensions":["wmz"]},"application/x-ms-xbap":{"source":"apache","extensions":["xbap"]},"application/x-msaccess":{"source":"apache","extensions":["mdb"]},"application/x-msbinder":{"source":"apache","extensions":["obd"]},"application/x-mscardfile":{"source":"apache","extensions":["crd"]},"application/x-msclip":{"source":"apache","extensions":["clp"]},"application/x-msdos-program":{"extensions":["exe"]},"application/x-msdownload":{"source":"apache","extensions":["exe","dll","com","bat","msi"]},"application/x-msmediaview":{"source":"apache","extensions":["mvb","m13","m14"]},"application/x-msmetafile":{"source":"apache","extensions":["wmf","wmz","emf","emz"]},"application/x-msmoney":{"source":"apache","extensions":["mny"]},"application/x-mspublisher":{"source":"apache","extensions":["pub"]},"application/x-msschedule":{"source":"apache","extensions":["scd"]},"application/x-msterminal":{"source":"apache","extensions":["trm"]},"application/x-mswrite":{"source":"apache","extensions":["wri"]},"application/x-netcdf":{"source":"apache","extensions":["nc","cdf"]},"application/x-ns-proxy-autoconfig":{"compressible":true,"extensions":["pac"]},"application/x-nzb":{"source":"apache","extensions":["nzb"]},"application/x-perl":{"source":"nginx","extensions":["pl","pm"]},"application/x-pilot":{"source":"nginx","extensions":["prc","pdb"]},"application/x-pkcs12":{"source":"apache","compressible":false,"extensions":["p12","pfx"]},"application/x-pkcs7-certificates":{"source":"apache","extensions":["p7b","spc"]},"application/x-pkcs7-certreqresp":{"source":"apache","extensions":["p7r"]},"application/x-pki-message":{"source":"iana"},"application/x-rar-compressed":{"source":"apache","compressible":false,"extensions":["rar"]},"application/x-redhat-package-manager":{"source":"nginx","extensions":["rpm"]},"application/x-research-info-systems":{"source":"apache","extensions":["ris"]},"application/x-sea":{"source":"nginx","extensions":["sea"]},"application/x-sh":{"source":"apache","compressible":true,"extensions":["sh"]},"application/x-shar":{"source":"apache","extensions":["shar"]},"application/x-shockwave-flash":{"source":"apache","compressible":false,"extensions":["swf"]},"application/x-silverlight-app":{"source":"apache","extensions":["xap"]},"application/x-sql":{"source":"apache","extensions":["sql"]},"application/x-stuffit":{"source":"apache","compressible":false,"extensions":["sit"]},"application/x-stuffitx":{"source":"apache","extensions":["sitx"]},"application/x-subrip":{"source":"apache","extensions":["srt"]},"application/x-sv4cpio":{"source":"apache","extensions":["sv4cpio"]},"application/x-sv4crc":{"source":"apache","extensions":["sv4crc"]},"application/x-t3vm-image":{"source":"apache","extensions":["t3"]},"application/x-tads":{"source":"apache","extensions":["gam"]},"application/x-tar":{"source":"apache","compressible":true,"extensions":["tar"]},"application/x-tcl":{"source":"apache","extensions":["tcl","tk"]},"application/x-tex":{"source":"apache","extensions":["tex"]},"application/x-tex-tfm":{"source":"apache","extensions":["tfm"]},"application/x-texinfo":{"source":"apache","extensions":["texinfo","texi"]},"application/x-tgif":{"source":"apache","extensions":["obj"]},"application/x-ustar":{"source":"apache","extensions":["ustar"]},"application/x-virtualbox-hdd":{"compressible":true,"extensions":["hdd"]},"application/x-virtualbox-ova":{"compressible":true,"extensions":["ova"]},"application/x-virtualbox-ovf":{"compressible":true,"extensions":["ovf"]},"application/x-virtualbox-vbox":{"compressible":true,"extensions":["vbox"]},"application/x-virtualbox-vbox-extpack":{"compressible":false,"extensions":["vbox-extpack"]},"application/x-virtualbox-vdi":{"compressible":true,"extensions":["vdi"]},"application/x-virtualbox-vhd":{"compressible":true,"extensions":["vhd"]},"application/x-virtualbox-vmdk":{"compressible":true,"extensions":["vmdk"]},"application/x-wais-source":{"source":"apache","extensions":["src"]},"application/x-web-app-manifest+json":{"compressible":true,"extensions":["webapp"]},"application/x-www-form-urlencoded":{"source":"iana","compressible":true},"application/x-x509-ca-cert":{"source":"iana","extensions":["der","crt","pem"]},"application/x-x509-ca-ra-cert":{"source":"iana"},"application/x-x509-next-ca-cert":{"source":"iana"},"application/x-xfig":{"source":"apache","extensions":["fig"]},"application/x-xliff+xml":{"source":"apache","compressible":true,"extensions":["xlf"]},"application/x-xpinstall":{"source":"apache","compressible":false,"extensions":["xpi"]},"application/x-xz":{"source":"apache","extensions":["xz"]},"application/x-zmachine":{"source":"apache","extensions":["z1","z2","z3","z4","z5","z6","z7","z8"]},"application/x400-bp":{"source":"iana"},"application/xacml+xml":{"source":"iana","compressible":true},"application/xaml+xml":{"source":"apache","compressible":true,"extensions":["xaml"]},"application/xcap-att+xml":{"source":"iana","compressible":true,"extensions":["xav"]},"application/xcap-caps+xml":{"source":"iana","compressible":true,"extensions":["xca"]},"application/xcap-diff+xml":{"source":"iana","compressible":true,"extensions":["xdf"]},"application/xcap-el+xml":{"source":"iana","compressible":true,"extensions":["xel"]},"application/xcap-error+xml":{"source":"iana","compressible":true},"application/xcap-ns+xml":{"source":"iana","compressible":true,"extensions":["xns"]},"application/xcon-conference-info+xml":{"source":"iana","compressible":true},"application/xcon-conference-info-diff+xml":{"source":"iana","compressible":true},"application/xenc+xml":{"source":"iana","compressible":true,"extensions":["xenc"]},"application/xhtml+xml":{"source":"iana","compressible":true,"extensions":["xhtml","xht"]},"application/xhtml-voice+xml":{"source":"apache","compressible":true},"application/xliff+xml":{"source":"iana","compressible":true,"extensions":["xlf"]},"application/xml":{"source":"iana","compressible":true,"extensions":["xml","xsl","xsd","rng"]},"application/xml-dtd":{"source":"iana","compressible":true,"extensions":["dtd"]},"application/xml-external-parsed-entity":{"source":"iana"},"application/xml-patch+xml":{"source":"iana","compressible":true},"application/xmpp+xml":{"source":"iana","compressible":true},"application/xop+xml":{"source":"iana","compressible":true,"extensions":["xop"]},"application/xproc+xml":{"source":"apache","compressible":true,"extensions":["xpl"]},"application/xslt+xml":{"source":"iana","compressible":true,"extensions":["xsl","xslt"]},"application/xspf+xml":{"source":"apache","compressible":true,"extensions":["xspf"]},"application/xv+xml":{"source":"iana","compressible":true,"extensions":["mxml","xhvml","xvml","xvm"]},"application/yang":{"source":"iana","extensions":["yang"]},"application/yang-data+json":{"source":"iana","compressible":true},"application/yang-data+xml":{"source":"iana","compressible":true},"application/yang-patch+json":{"source":"iana","compressible":true},"application/yang-patch+xml":{"source":"iana","compressible":true},"application/yin+xml":{"source":"iana","compressible":true,"extensions":["yin"]},"application/zip":{"source":"iana","compressible":false,"extensions":["zip"]},"application/zlib":{"source":"iana"},"application/zstd":{"source":"iana"},"audio/1d-interleaved-parityfec":{"source":"iana"},"audio/32kadpcm":{"source":"iana"},"audio/3gpp":{"source":"iana","compressible":false,"extensions":["3gpp"]},"audio/3gpp2":{"source":"iana"},"audio/aac":{"source":"iana"},"audio/ac3":{"source":"iana"},"audio/adpcm":{"source":"apache","extensions":["adp"]},"audio/amr":{"source":"iana","extensions":["amr"]},"audio/amr-wb":{"source":"iana"},"audio/amr-wb+":{"source":"iana"},"audio/aptx":{"source":"iana"},"audio/asc":{"source":"iana"},"audio/atrac-advanced-lossless":{"source":"iana"},"audio/atrac-x":{"source":"iana"},"audio/atrac3":{"source":"iana"},"audio/basic":{"source":"iana","compressible":false,"extensions":["au","snd"]},"audio/bv16":{"source":"iana"},"audio/bv32":{"source":"iana"},"audio/clearmode":{"source":"iana"},"audio/cn":{"source":"iana"},"audio/dat12":{"source":"iana"},"audio/dls":{"source":"iana"},"audio/dsr-es201108":{"source":"iana"},"audio/dsr-es202050":{"source":"iana"},"audio/dsr-es202211":{"source":"iana"},"audio/dsr-es202212":{"source":"iana"},"audio/dv":{"source":"iana"},"audio/dvi4":{"source":"iana"},"audio/eac3":{"source":"iana"},"audio/encaprtp":{"source":"iana"},"audio/evrc":{"source":"iana"},"audio/evrc-qcp":{"source":"iana"},"audio/evrc0":{"source":"iana"},"audio/evrc1":{"source":"iana"},"audio/evrcb":{"source":"iana"},"audio/evrcb0":{"source":"iana"},"audio/evrcb1":{"source":"iana"},"audio/evrcnw":{"source":"iana"},"audio/evrcnw0":{"source":"iana"},"audio/evrcnw1":{"source":"iana"},"audio/evrcwb":{"source":"iana"},"audio/evrcwb0":{"source":"iana"},"audio/evrcwb1":{"source":"iana"},"audio/evs":{"source":"iana"},"audio/flexfec":{"source":"iana"},"audio/fwdred":{"source":"iana"},"audio/g711-0":{"source":"iana"},"audio/g719":{"source":"iana"},"audio/g722":{"source":"iana"},"audio/g7221":{"source":"iana"},"audio/g723":{"source":"iana"},"audio/g726-16":{"source":"iana"},"audio/g726-24":{"source":"iana"},"audio/g726-32":{"source":"iana"},"audio/g726-40":{"source":"iana"},"audio/g728":{"source":"iana"},"audio/g729":{"source":"iana"},"audio/g7291":{"source":"iana"},"audio/g729d":{"source":"iana"},"audio/g729e":{"source":"iana"},"audio/gsm":{"source":"iana"},"audio/gsm-efr":{"source":"iana"},"audio/gsm-hr-08":{"source":"iana"},"audio/ilbc":{"source":"iana"},"audio/ip-mr_v2.5":{"source":"iana"},"audio/isac":{"source":"apache"},"audio/l16":{"source":"iana"},"audio/l20":{"source":"iana"},"audio/l24":{"source":"iana","compressible":false},"audio/l8":{"source":"iana"},"audio/lpc":{"source":"iana"},"audio/melp":{"source":"iana"},"audio/melp1200":{"source":"iana"},"audio/melp2400":{"source":"iana"},"audio/melp600":{"source":"iana"},"audio/mhas":{"source":"iana"},"audio/midi":{"source":"apache","extensions":["mid","midi","kar","rmi"]},"audio/mobile-xmf":{"source":"iana","extensions":["mxmf"]},"audio/mp3":{"compressible":false,"extensions":["mp3"]},"audio/mp4":{"source":"iana","compressible":false,"extensions":["m4a","mp4a"]},"audio/mp4a-latm":{"source":"iana"},"audio/mpa":{"source":"iana"},"audio/mpa-robust":{"source":"iana"},"audio/mpeg":{"source":"iana","compressible":false,"extensions":["mpga","mp2","mp2a","mp3","m2a","m3a"]},"audio/mpeg4-generic":{"source":"iana"},"audio/musepack":{"source":"apache"},"audio/ogg":{"source":"iana","compressible":false,"extensions":["oga","ogg","spx","opus"]},"audio/opus":{"source":"iana"},"audio/parityfec":{"source":"iana"},"audio/pcma":{"source":"iana"},"audio/pcma-wb":{"source":"iana"},"audio/pcmu":{"source":"iana"},"audio/pcmu-wb":{"source":"iana"},"audio/prs.sid":{"source":"iana"},"audio/qcelp":{"source":"iana"},"audio/raptorfec":{"source":"iana"},"audio/red":{"source":"iana"},"audio/rtp-enc-aescm128":{"source":"iana"},"audio/rtp-midi":{"source":"iana"},"audio/rtploopback":{"source":"iana"},"audio/rtx":{"source":"iana"},"audio/s3m":{"source":"apache","extensions":["s3m"]},"audio/scip":{"source":"iana"},"audio/silk":{"source":"apache","extensions":["sil"]},"audio/smv":{"source":"iana"},"audio/smv-qcp":{"source":"iana"},"audio/smv0":{"source":"iana"},"audio/sofa":{"source":"iana"},"audio/sp-midi":{"source":"iana"},"audio/speex":{"source":"iana"},"audio/t140c":{"source":"iana"},"audio/t38":{"source":"iana"},"audio/telephone-event":{"source":"iana"},"audio/tetra_acelp":{"source":"iana"},"audio/tetra_acelp_bb":{"source":"iana"},"audio/tone":{"source":"iana"},"audio/tsvcis":{"source":"iana"},"audio/uemclip":{"source":"iana"},"audio/ulpfec":{"source":"iana"},"audio/usac":{"source":"iana"},"audio/vdvi":{"source":"iana"},"audio/vmr-wb":{"source":"iana"},"audio/vnd.3gpp.iufp":{"source":"iana"},"audio/vnd.4sb":{"source":"iana"},"audio/vnd.audiokoz":{"source":"iana"},"audio/vnd.celp":{"source":"iana"},"audio/vnd.cisco.nse":{"source":"iana"},"audio/vnd.cmles.radio-events":{"source":"iana"},"audio/vnd.cns.anp1":{"source":"iana"},"audio/vnd.cns.inf1":{"source":"iana"},"audio/vnd.dece.audio":{"source":"iana","extensions":["uva","uvva"]},"audio/vnd.digital-winds":{"source":"iana","extensions":["eol"]},"audio/vnd.dlna.adts":{"source":"iana"},"audio/vnd.dolby.heaac.1":{"source":"iana"},"audio/vnd.dolby.heaac.2":{"source":"iana"},"audio/vnd.dolby.mlp":{"source":"iana"},"audio/vnd.dolby.mps":{"source":"iana"},"audio/vnd.dolby.pl2":{"source":"iana"},"audio/vnd.dolby.pl2x":{"source":"iana"},"audio/vnd.dolby.pl2z":{"source":"iana"},"audio/vnd.dolby.pulse.1":{"source":"iana"},"audio/vnd.dra":{"source":"iana","extensions":["dra"]},"audio/vnd.dts":{"source":"iana","extensions":["dts"]},"audio/vnd.dts.hd":{"source":"iana","extensions":["dtshd"]},"audio/vnd.dts.uhd":{"source":"iana"},"audio/vnd.dvb.file":{"source":"iana"},"audio/vnd.everad.plj":{"source":"iana"},"audio/vnd.hns.audio":{"source":"iana"},"audio/vnd.lucent.voice":{"source":"iana","extensions":["lvp"]},"audio/vnd.ms-playready.media.pya":{"source":"iana","extensions":["pya"]},"audio/vnd.nokia.mobile-xmf":{"source":"iana"},"audio/vnd.nortel.vbk":{"source":"iana"},"audio/vnd.nuera.ecelp4800":{"source":"iana","extensions":["ecelp4800"]},"audio/vnd.nuera.ecelp7470":{"source":"iana","extensions":["ecelp7470"]},"audio/vnd.nuera.ecelp9600":{"source":"iana","extensions":["ecelp9600"]},"audio/vnd.octel.sbc":{"source":"iana"},"audio/vnd.presonus.multitrack":{"source":"iana"},"audio/vnd.qcelp":{"source":"iana"},"audio/vnd.rhetorex.32kadpcm":{"source":"iana"},"audio/vnd.rip":{"source":"iana","extensions":["rip"]},"audio/vnd.rn-realaudio":{"compressible":false},"audio/vnd.sealedmedia.softseal.mpeg":{"source":"iana"},"audio/vnd.vmx.cvsd":{"source":"iana"},"audio/vnd.wave":{"compressible":false},"audio/vorbis":{"source":"iana","compressible":false},"audio/vorbis-config":{"source":"iana"},"audio/wav":{"compressible":false,"extensions":["wav"]},"audio/wave":{"compressible":false,"extensions":["wav"]},"audio/webm":{"source":"apache","compressible":false,"extensions":["weba"]},"audio/x-aac":{"source":"apache","compressible":false,"extensions":["aac"]},"audio/x-aiff":{"source":"apache","extensions":["aif","aiff","aifc"]},"audio/x-caf":{"source":"apache","compressible":false,"extensions":["caf"]},"audio/x-flac":{"source":"apache","extensions":["flac"]},"audio/x-m4a":{"source":"nginx","extensions":["m4a"]},"audio/x-matroska":{"source":"apache","extensions":["mka"]},"audio/x-mpegurl":{"source":"apache","extensions":["m3u"]},"audio/x-ms-wax":{"source":"apache","extensions":["wax"]},"audio/x-ms-wma":{"source":"apache","extensions":["wma"]},"audio/x-pn-realaudio":{"source":"apache","extensions":["ram","ra"]},"audio/x-pn-realaudio-plugin":{"source":"apache","extensions":["rmp"]},"audio/x-realaudio":{"source":"nginx","extensions":["ra"]},"audio/x-tta":{"source":"apache"},"audio/x-wav":{"source":"apache","extensions":["wav"]},"audio/xm":{"source":"apache","extensions":["xm"]},"chemical/x-cdx":{"source":"apache","extensions":["cdx"]},"chemical/x-cif":{"source":"apache","extensions":["cif"]},"chemical/x-cmdf":{"source":"apache","extensions":["cmdf"]},"chemical/x-cml":{"source":"apache","extensions":["cml"]},"chemical/x-csml":{"source":"apache","extensions":["csml"]},"chemical/x-pdb":{"source":"apache"},"chemical/x-xyz":{"source":"apache","extensions":["xyz"]},"font/collection":{"source":"iana","extensions":["ttc"]},"font/otf":{"source":"iana","compressible":true,"extensions":["otf"]},"font/sfnt":{"source":"iana"},"font/ttf":{"source":"iana","compressible":true,"extensions":["ttf"]},"font/woff":{"source":"iana","extensions":["woff"]},"font/woff2":{"source":"iana","extensions":["woff2"]},"image/aces":{"source":"iana","extensions":["exr"]},"image/apng":{"compressible":false,"extensions":["apng"]},"image/avci":{"source":"iana","extensions":["avci"]},"image/avcs":{"source":"iana","extensions":["avcs"]},"image/avif":{"source":"iana","compressible":false,"extensions":["avif"]},"image/bmp":{"source":"iana","compressible":true,"extensions":["bmp"]},"image/cgm":{"source":"iana","extensions":["cgm"]},"image/dicom-rle":{"source":"iana","extensions":["drle"]},"image/emf":{"source":"iana","extensions":["emf"]},"image/fits":{"source":"iana","extensions":["fits"]},"image/g3fax":{"source":"iana","extensions":["g3"]},"image/gif":{"source":"iana","compressible":false,"extensions":["gif"]},"image/heic":{"source":"iana","extensions":["heic"]},"image/heic-sequence":{"source":"iana","extensions":["heics"]},"image/heif":{"source":"iana","extensions":["heif"]},"image/heif-sequence":{"source":"iana","extensions":["heifs"]},"image/hej2k":{"source":"iana","extensions":["hej2"]},"image/hsj2":{"source":"iana","extensions":["hsj2"]},"image/ief":{"source":"iana","extensions":["ief"]},"image/jls":{"source":"iana","extensions":["jls"]},"image/jp2":{"source":"iana","compressible":false,"extensions":["jp2","jpg2"]},"image/jpeg":{"source":"iana","compressible":false,"extensions":["jpeg","jpg","jpe"]},"image/jph":{"source":"iana","extensions":["jph"]},"image/jphc":{"source":"iana","extensions":["jhc"]},"image/jpm":{"source":"iana","compressible":false,"extensions":["jpm"]},"image/jpx":{"source":"iana","compressible":false,"extensions":["jpx","jpf"]},"image/jxr":{"source":"iana","extensions":["jxr"]},"image/jxra":{"source":"iana","extensions":["jxra"]},"image/jxrs":{"source":"iana","extensions":["jxrs"]},"image/jxs":{"source":"iana","extensions":["jxs"]},"image/jxsc":{"source":"iana","extensions":["jxsc"]},"image/jxsi":{"source":"iana","extensions":["jxsi"]},"image/jxss":{"source":"iana","extensions":["jxss"]},"image/ktx":{"source":"iana","extensions":["ktx"]},"image/ktx2":{"source":"iana","extensions":["ktx2"]},"image/naplps":{"source":"iana"},"image/pjpeg":{"compressible":false},"image/png":{"source":"iana","compressible":false,"extensions":["png"]},"image/prs.btif":{"source":"iana","extensions":["btif"]},"image/prs.pti":{"source":"iana","extensions":["pti"]},"image/pwg-raster":{"source":"iana"},"image/sgi":{"source":"apache","extensions":["sgi"]},"image/svg+xml":{"source":"iana","compressible":true,"extensions":["svg","svgz"]},"image/t38":{"source":"iana","extensions":["t38"]},"image/tiff":{"source":"iana","compressible":false,"extensions":["tif","tiff"]},"image/tiff-fx":{"source":"iana","extensions":["tfx"]},"image/vnd.adobe.photoshop":{"source":"iana","compressible":true,"extensions":["psd"]},"image/vnd.airzip.accelerator.azv":{"source":"iana","extensions":["azv"]},"image/vnd.cns.inf2":{"source":"iana"},"image/vnd.dece.graphic":{"source":"iana","extensions":["uvi","uvvi","uvg","uvvg"]},"image/vnd.djvu":{"source":"iana","extensions":["djvu","djv"]},"image/vnd.dvb.subtitle":{"source":"iana","extensions":["sub"]},"image/vnd.dwg":{"source":"iana","extensions":["dwg"]},"image/vnd.dxf":{"source":"iana","extensions":["dxf"]},"image/vnd.fastbidsheet":{"source":"iana","extensions":["fbs"]},"image/vnd.fpx":{"source":"iana","extensions":["fpx"]},"image/vnd.fst":{"source":"iana","extensions":["fst"]},"image/vnd.fujixerox.edmics-mmr":{"source":"iana","extensions":["mmr"]},"image/vnd.fujixerox.edmics-rlc":{"source":"iana","extensions":["rlc"]},"image/vnd.globalgraphics.pgb":{"source":"iana"},"image/vnd.microsoft.icon":{"source":"iana","compressible":true,"extensions":["ico"]},"image/vnd.mix":{"source":"iana"},"image/vnd.mozilla.apng":{"source":"iana"},"image/vnd.ms-dds":{"compressible":true,"extensions":["dds"]},"image/vnd.ms-modi":{"source":"iana","extensions":["mdi"]},"image/vnd.ms-photo":{"source":"apache","extensions":["wdp"]},"image/vnd.net-fpx":{"source":"iana","extensions":["npx"]},"image/vnd.pco.b16":{"source":"iana","extensions":["b16"]},"image/vnd.radiance":{"source":"iana"},"image/vnd.sealed.png":{"source":"iana"},"image/vnd.sealedmedia.softseal.gif":{"source":"iana"},"image/vnd.sealedmedia.softseal.jpg":{"source":"iana"},"image/vnd.svf":{"source":"iana"},"image/vnd.tencent.tap":{"source":"iana","extensions":["tap"]},"image/vnd.valve.source.texture":{"source":"iana","extensions":["vtf"]},"image/vnd.wap.wbmp":{"source":"iana","extensions":["wbmp"]},"image/vnd.xiff":{"source":"iana","extensions":["xif"]},"image/vnd.zbrush.pcx":{"source":"iana","extensions":["pcx"]},"image/webp":{"source":"apache","extensions":["webp"]},"image/wmf":{"source":"iana","extensions":["wmf"]},"image/x-3ds":{"source":"apache","extensions":["3ds"]},"image/x-cmu-raster":{"source":"apache","extensions":["ras"]},"image/x-cmx":{"source":"apache","extensions":["cmx"]},"image/x-freehand":{"source":"apache","extensions":["fh","fhc","fh4","fh5","fh7"]},"image/x-icon":{"source":"apache","compressible":true,"extensions":["ico"]},"image/x-jng":{"source":"nginx","extensions":["jng"]},"image/x-mrsid-image":{"source":"apache","extensions":["sid"]},"image/x-ms-bmp":{"source":"nginx","compressible":true,"extensions":["bmp"]},"image/x-pcx":{"source":"apache","extensions":["pcx"]},"image/x-pict":{"source":"apache","extensions":["pic","pct"]},"image/x-portable-anymap":{"source":"apache","extensions":["pnm"]},"image/x-portable-bitmap":{"source":"apache","extensions":["pbm"]},"image/x-portable-graymap":{"source":"apache","extensions":["pgm"]},"image/x-portable-pixmap":{"source":"apache","extensions":["ppm"]},"image/x-rgb":{"source":"apache","extensions":["rgb"]},"image/x-tga":{"source":"apache","extensions":["tga"]},"image/x-xbitmap":{"source":"apache","extensions":["xbm"]},"image/x-xcf":{"compressible":false},"image/x-xpixmap":{"source":"apache","extensions":["xpm"]},"image/x-xwindowdump":{"source":"apache","extensions":["xwd"]},"message/cpim":{"source":"iana"},"message/delivery-status":{"source":"iana"},"message/disposition-notification":{"source":"iana","extensions":["disposition-notification"]},"message/external-body":{"source":"iana"},"message/feedback-report":{"source":"iana"},"message/global":{"source":"iana","extensions":["u8msg"]},"message/global-delivery-status":{"source":"iana","extensions":["u8dsn"]},"message/global-disposition-notification":{"source":"iana","extensions":["u8mdn"]},"message/global-headers":{"source":"iana","extensions":["u8hdr"]},"message/http":{"source":"iana","compressible":false},"message/imdn+xml":{"source":"iana","compressible":true},"message/news":{"source":"iana"},"message/partial":{"source":"iana","compressible":false},"message/rfc822":{"source":"iana","compressible":true,"extensions":["eml","mime"]},"message/s-http":{"source":"iana"},"message/sip":{"source":"iana"},"message/sipfrag":{"source":"iana"},"message/tracking-status":{"source":"iana"},"message/vnd.si.simp":{"source":"iana"},"message/vnd.wfa.wsc":{"source":"iana","extensions":["wsc"]},"model/3mf":{"source":"iana","extensions":["3mf"]},"model/e57":{"source":"iana"},"model/gltf+json":{"source":"iana","compressible":true,"extensions":["gltf"]},"model/gltf-binary":{"source":"iana","compressible":true,"extensions":["glb"]},"model/iges":{"source":"iana","compressible":false,"extensions":["igs","iges"]},"model/mesh":{"source":"iana","compressible":false,"extensions":["msh","mesh","silo"]},"model/mtl":{"source":"iana","extensions":["mtl"]},"model/obj":{"source":"iana","extensions":["obj"]},"model/step":{"source":"iana"},"model/step+xml":{"source":"iana","compressible":true,"extensions":["stpx"]},"model/step+zip":{"source":"iana","compressible":false,"extensions":["stpz"]},"model/step-xml+zip":{"source":"iana","compressible":false,"extensions":["stpxz"]},"model/stl":{"source":"iana","extensions":["stl"]},"model/vnd.collada+xml":{"source":"iana","compressible":true,"extensions":["dae"]},"model/vnd.dwf":{"source":"iana","extensions":["dwf"]},"model/vnd.flatland.3dml":{"source":"iana"},"model/vnd.gdl":{"source":"iana","extensions":["gdl"]},"model/vnd.gs-gdl":{"source":"apache"},"model/vnd.gs.gdl":{"source":"iana"},"model/vnd.gtw":{"source":"iana","extensions":["gtw"]},"model/vnd.moml+xml":{"source":"iana","compressible":true},"model/vnd.mts":{"source":"iana","extensions":["mts"]},"model/vnd.opengex":{"source":"iana","extensions":["ogex"]},"model/vnd.parasolid.transmit.binary":{"source":"iana","extensions":["x_b"]},"model/vnd.parasolid.transmit.text":{"source":"iana","extensions":["x_t"]},"model/vnd.pytha.pyox":{"source":"iana"},"model/vnd.rosette.annotated-data-model":{"source":"iana"},"model/vnd.sap.vds":{"source":"iana","extensions":["vds"]},"model/vnd.usdz+zip":{"source":"iana","compressible":false,"extensions":["usdz"]},"model/vnd.valve.source.compiled-map":{"source":"iana","extensions":["bsp"]},"model/vnd.vtu":{"source":"iana","extensions":["vtu"]},"model/vrml":{"source":"iana","compressible":false,"extensions":["wrl","vrml"]},"model/x3d+binary":{"source":"apache","compressible":false,"extensions":["x3db","x3dbz"]},"model/x3d+fastinfoset":{"source":"iana","extensions":["x3db"]},"model/x3d+vrml":{"source":"apache","compressible":false,"extensions":["x3dv","x3dvz"]},"model/x3d+xml":{"source":"iana","compressible":true,"extensions":["x3d","x3dz"]},"model/x3d-vrml":{"source":"iana","extensions":["x3dv"]},"multipart/alternative":{"source":"iana","compressible":false},"multipart/appledouble":{"source":"iana"},"multipart/byteranges":{"source":"iana"},"multipart/digest":{"source":"iana"},"multipart/encrypted":{"source":"iana","compressible":false},"multipart/form-data":{"source":"iana","compressible":false},"multipart/header-set":{"source":"iana"},"multipart/mixed":{"source":"iana"},"multipart/multilingual":{"source":"iana"},"multipart/parallel":{"source":"iana"},"multipart/related":{"source":"iana","compressible":false},"multipart/report":{"source":"iana"},"multipart/signed":{"source":"iana","compressible":false},"multipart/vnd.bint.med-plus":{"source":"iana"},"multipart/voice-message":{"source":"iana"},"multipart/x-mixed-replace":{"source":"iana"},"text/1d-interleaved-parityfec":{"source":"iana"},"text/cache-manifest":{"source":"iana","compressible":true,"extensions":["appcache","manifest"]},"text/calendar":{"source":"iana","extensions":["ics","ifb"]},"text/calender":{"compressible":true},"text/cmd":{"compressible":true},"text/coffeescript":{"extensions":["coffee","litcoffee"]},"text/cql":{"source":"iana"},"text/cql-expression":{"source":"iana"},"text/cql-identifier":{"source":"iana"},"text/css":{"source":"iana","charset":"UTF-8","compressible":true,"extensions":["css"]},"text/csv":{"source":"iana","compressible":true,"extensions":["csv"]},"text/csv-schema":{"source":"iana"},"text/directory":{"source":"iana"},"text/dns":{"source":"iana"},"text/ecmascript":{"source":"iana"},"text/encaprtp":{"source":"iana"},"text/enriched":{"source":"iana"},"text/fhirpath":{"source":"iana"},"text/flexfec":{"source":"iana"},"text/fwdred":{"source":"iana"},"text/gff3":{"source":"iana"},"text/grammar-ref-list":{"source":"iana"},"text/html":{"source":"iana","compressible":true,"extensions":["html","htm","shtml"]},"text/jade":{"extensions":["jade"]},"text/javascript":{"source":"iana","compressible":true},"text/jcr-cnd":{"source":"iana"},"text/jsx":{"compressible":true,"extensions":["jsx"]},"text/less":{"compressible":true,"extensions":["less"]},"text/markdown":{"source":"iana","compressible":true,"extensions":["markdown","md"]},"text/mathml":{"source":"nginx","extensions":["mml"]},"text/mdx":{"compressible":true,"extensions":["mdx"]},"text/mizar":{"source":"iana"},"text/n3":{"source":"iana","charset":"UTF-8","compressible":true,"extensions":["n3"]},"text/parameters":{"source":"iana","charset":"UTF-8"},"text/parityfec":{"source":"iana"},"text/plain":{"source":"iana","compressible":true,"extensions":["txt","text","conf","def","list","log","in","ini"]},"text/provenance-notation":{"source":"iana","charset":"UTF-8"},"text/prs.fallenstein.rst":{"source":"iana"},"text/prs.lines.tag":{"source":"iana","extensions":["dsc"]},"text/prs.prop.logic":{"source":"iana"},"text/raptorfec":{"source":"iana"},"text/red":{"source":"iana"},"text/rfc822-headers":{"source":"iana"},"text/richtext":{"source":"iana","compressible":true,"extensions":["rtx"]},"text/rtf":{"source":"iana","compressible":true,"extensions":["rtf"]},"text/rtp-enc-aescm128":{"source":"iana"},"text/rtploopback":{"source":"iana"},"text/rtx":{"source":"iana"},"text/sgml":{"source":"iana","extensions":["sgml","sgm"]},"text/shaclc":{"source":"iana"},"text/shex":{"source":"iana","extensions":["shex"]},"text/slim":{"extensions":["slim","slm"]},"text/spdx":{"source":"iana","extensions":["spdx"]},"text/strings":{"source":"iana"},"text/stylus":{"extensions":["stylus","styl"]},"text/t140":{"source":"iana"},"text/tab-separated-values":{"source":"iana","compressible":true,"extensions":["tsv"]},"text/troff":{"source":"iana","extensions":["t","tr","roff","man","me","ms"]},"text/turtle":{"source":"iana","charset":"UTF-8","extensions":["ttl"]},"text/ulpfec":{"source":"iana"},"text/uri-list":{"source":"iana","compressible":true,"extensions":["uri","uris","urls"]},"text/vcard":{"source":"iana","compressible":true,"extensions":["vcard"]},"text/vnd.a":{"source":"iana"},"text/vnd.abc":{"source":"iana"},"text/vnd.ascii-art":{"source":"iana"},"text/vnd.curl":{"source":"iana","extensions":["curl"]},"text/vnd.curl.dcurl":{"source":"apache","extensions":["dcurl"]},"text/vnd.curl.mcurl":{"source":"apache","extensions":["mcurl"]},"text/vnd.curl.scurl":{"source":"apache","extensions":["scurl"]},"text/vnd.debian.copyright":{"source":"iana","charset":"UTF-8"},"text/vnd.dmclientscript":{"source":"iana"},"text/vnd.dvb.subtitle":{"source":"iana","extensions":["sub"]},"text/vnd.esmertec.theme-descriptor":{"source":"iana","charset":"UTF-8"},"text/vnd.familysearch.gedcom":{"source":"iana","extensions":["ged"]},"text/vnd.ficlab.flt":{"source":"iana"},"text/vnd.fly":{"source":"iana","extensions":["fly"]},"text/vnd.fmi.flexstor":{"source":"iana","extensions":["flx"]},"text/vnd.gml":{"source":"iana"},"text/vnd.graphviz":{"source":"iana","extensions":["gv"]},"text/vnd.hans":{"source":"iana"},"text/vnd.hgl":{"source":"iana"},"text/vnd.in3d.3dml":{"source":"iana","extensions":["3dml"]},"text/vnd.in3d.spot":{"source":"iana","extensions":["spot"]},"text/vnd.iptc.newsml":{"source":"iana"},"text/vnd.iptc.nitf":{"source":"iana"},"text/vnd.latex-z":{"source":"iana"},"text/vnd.motorola.reflex":{"source":"iana"},"text/vnd.ms-mediapackage":{"source":"iana"},"text/vnd.net2phone.commcenter.command":{"source":"iana"},"text/vnd.radisys.msml-basic-layout":{"source":"iana"},"text/vnd.senx.warpscript":{"source":"iana"},"text/vnd.si.uricatalogue":{"source":"iana"},"text/vnd.sosi":{"source":"iana"},"text/vnd.sun.j2me.app-descriptor":{"source":"iana","charset":"UTF-8","extensions":["jad"]},"text/vnd.trolltech.linguist":{"source":"iana","charset":"UTF-8"},"text/vnd.wap.si":{"source":"iana"},"text/vnd.wap.sl":{"source":"iana"},"text/vnd.wap.wml":{"source":"iana","extensions":["wml"]},"text/vnd.wap.wmlscript":{"source":"iana","extensions":["wmls"]},"text/vtt":{"source":"iana","charset":"UTF-8","compressible":true,"extensions":["vtt"]},"text/x-asm":{"source":"apache","extensions":["s","asm"]},"text/x-c":{"source":"apache","extensions":["c","cc","cxx","cpp","h","hh","dic"]},"text/x-component":{"source":"nginx","extensions":["htc"]},"text/x-fortran":{"source":"apache","extensions":["f","for","f77","f90"]},"text/x-gwt-rpc":{"compressible":true},"text/x-handlebars-template":{"extensions":["hbs"]},"text/x-java-source":{"source":"apache","extensions":["java"]},"text/x-jquery-tmpl":{"compressible":true},"text/x-lua":{"extensions":["lua"]},"text/x-markdown":{"compressible":true,"extensions":["mkd"]},"text/x-nfo":{"source":"apache","extensions":["nfo"]},"text/x-opml":{"source":"apache","extensions":["opml"]},"text/x-org":{"compressible":true,"extensions":["org"]},"text/x-pascal":{"source":"apache","extensions":["p","pas"]},"text/x-processing":{"compressible":true,"extensions":["pde"]},"text/x-sass":{"extensions":["sass"]},"text/x-scss":{"extensions":["scss"]},"text/x-setext":{"source":"apache","extensions":["etx"]},"text/x-sfv":{"source":"apache","extensions":["sfv"]},"text/x-suse-ymp":{"compressible":true,"extensions":["ymp"]},"text/x-uuencode":{"source":"apache","extensions":["uu"]},"text/x-vcalendar":{"source":"apache","extensions":["vcs"]},"text/x-vcard":{"source":"apache","extensions":["vcf"]},"text/xml":{"source":"iana","compressible":true,"extensions":["xml"]},"text/xml-external-parsed-entity":{"source":"iana"},"text/yaml":{"compressible":true,"extensions":["yaml","yml"]},"video/1d-interleaved-parityfec":{"source":"iana"},"video/3gpp":{"source":"iana","extensions":["3gp","3gpp"]},"video/3gpp-tt":{"source":"iana"},"video/3gpp2":{"source":"iana","extensions":["3g2"]},"video/av1":{"source":"iana"},"video/bmpeg":{"source":"iana"},"video/bt656":{"source":"iana"},"video/celb":{"source":"iana"},"video/dv":{"source":"iana"},"video/encaprtp":{"source":"iana"},"video/ffv1":{"source":"iana"},"video/flexfec":{"source":"iana"},"video/h261":{"source":"iana","extensions":["h261"]},"video/h263":{"source":"iana","extensions":["h263"]},"video/h263-1998":{"source":"iana"},"video/h263-2000":{"source":"iana"},"video/h264":{"source":"iana","extensions":["h264"]},"video/h264-rcdo":{"source":"iana"},"video/h264-svc":{"source":"iana"},"video/h265":{"source":"iana"},"video/iso.segment":{"source":"iana","extensions":["m4s"]},"video/jpeg":{"source":"iana","extensions":["jpgv"]},"video/jpeg2000":{"source":"iana"},"video/jpm":{"source":"apache","extensions":["jpm","jpgm"]},"video/jxsv":{"source":"iana"},"video/mj2":{"source":"iana","extensions":["mj2","mjp2"]},"video/mp1s":{"source":"iana"},"video/mp2p":{"source":"iana"},"video/mp2t":{"source":"iana","extensions":["ts"]},"video/mp4":{"source":"iana","compressible":false,"extensions":["mp4","mp4v","mpg4"]},"video/mp4v-es":{"source":"iana"},"video/mpeg":{"source":"iana","compressible":false,"extensions":["mpeg","mpg","mpe","m1v","m2v"]},"video/mpeg4-generic":{"source":"iana"},"video/mpv":{"source":"iana"},"video/nv":{"source":"iana"},"video/ogg":{"source":"iana","compressible":false,"extensions":["ogv"]},"video/parityfec":{"source":"iana"},"video/pointer":{"source":"iana"},"video/quicktime":{"source":"iana","compressible":false,"extensions":["qt","mov"]},"video/raptorfec":{"source":"iana"},"video/raw":{"source":"iana"},"video/rtp-enc-aescm128":{"source":"iana"},"video/rtploopback":{"source":"iana"},"video/rtx":{"source":"iana"},"video/scip":{"source":"iana"},"video/smpte291":{"source":"iana"},"video/smpte292m":{"source":"iana"},"video/ulpfec":{"source":"iana"},"video/vc1":{"source":"iana"},"video/vc2":{"source":"iana"},"video/vnd.cctv":{"source":"iana"},"video/vnd.dece.hd":{"source":"iana","extensions":["uvh","uvvh"]},"video/vnd.dece.mobile":{"source":"iana","extensions":["uvm","uvvm"]},"video/vnd.dece.mp4":{"source":"iana"},"video/vnd.dece.pd":{"source":"iana","extensions":["uvp","uvvp"]},"video/vnd.dece.sd":{"source":"iana","extensions":["uvs","uvvs"]},"video/vnd.dece.video":{"source":"iana","extensions":["uvv","uvvv"]},"video/vnd.directv.mpeg":{"source":"iana"},"video/vnd.directv.mpeg-tts":{"source":"iana"},"video/vnd.dlna.mpeg-tts":{"source":"iana"},"video/vnd.dvb.file":{"source":"iana","extensions":["dvb"]},"video/vnd.fvt":{"source":"iana","extensions":["fvt"]},"video/vnd.hns.video":{"source":"iana"},"video/vnd.iptvforum.1dparityfec-1010":{"source":"iana"},"video/vnd.iptvforum.1dparityfec-2005":{"source":"iana"},"video/vnd.iptvforum.2dparityfec-1010":{"source":"iana"},"video/vnd.iptvforum.2dparityfec-2005":{"source":"iana"},"video/vnd.iptvforum.ttsavc":{"source":"iana"},"video/vnd.iptvforum.ttsmpeg2":{"source":"iana"},"video/vnd.motorola.video":{"source":"iana"},"video/vnd.motorola.videop":{"source":"iana"},"video/vnd.mpegurl":{"source":"iana","extensions":["mxu","m4u"]},"video/vnd.ms-playready.media.pyv":{"source":"iana","extensions":["pyv"]},"video/vnd.nokia.interleaved-multimedia":{"source":"iana"},"video/vnd.nokia.mp4vr":{"source":"iana"},"video/vnd.nokia.videovoip":{"source":"iana"},"video/vnd.objectvideo":{"source":"iana"},"video/vnd.radgamettools.bink":{"source":"iana"},"video/vnd.radgamettools.smacker":{"source":"iana"},"video/vnd.sealed.mpeg1":{"source":"iana"},"video/vnd.sealed.mpeg4":{"source":"iana"},"video/vnd.sealed.swf":{"source":"iana"},"video/vnd.sealedmedia.softseal.mov":{"source":"iana"},"video/vnd.uvvu.mp4":{"source":"iana","extensions":["uvu","uvvu"]},"video/vnd.vivo":{"source":"iana","extensions":["viv"]},"video/vnd.youtube.yt":{"source":"iana"},"video/vp8":{"source":"iana"},"video/vp9":{"source":"iana"},"video/webm":{"source":"apache","compressible":false,"extensions":["webm"]},"video/x-f4v":{"source":"apache","extensions":["f4v"]},"video/x-fli":{"source":"apache","extensions":["fli"]},"video/x-flv":{"source":"apache","compressible":false,"extensions":["flv"]},"video/x-m4v":{"source":"apache","extensions":["m4v"]},"video/x-matroska":{"source":"apache","compressible":false,"extensions":["mkv","mk3d","mks"]},"video/x-mng":{"source":"apache","extensions":["mng"]},"video/x-ms-asf":{"source":"apache","extensions":["asf","asx"]},"video/x-ms-vob":{"source":"apache","extensions":["vob"]},"video/x-ms-wm":{"source":"apache","extensions":["wm"]},"video/x-ms-wmv":{"source":"apache","compressible":false,"extensions":["wmv"]},"video/x-ms-wmx":{"source":"apache","extensions":["wmx"]},"video/x-ms-wvx":{"source":"apache","extensions":["wvx"]},"video/x-msvideo":{"source":"apache","extensions":["avi"]},"video/x-sgi-movie":{"source":"apache","extensions":["movie"]},"video/x-smv":{"source":"apache","extensions":["smv"]},"x-conference/x-cooltalk":{"source":"apache","extensions":["ice"]},"x-shader/x-fragment":{"compressible":true},"x-shader/x-vertex":{"compressible":true}}');
+
+/***/ }),
+
+/***/ 2954:
+/***/ ((module) => {
+
+"use strict";
+module.exports = JSON.parse('{"name":"thread-stream","version":"2.2.0","description":"A streaming way to send data to a Node.js Worker Thread","main":"index.js","types":"index.d.ts","dependencies":{"real-require":"^0.2.0"},"devDependencies":{"@types/node":"^18.0.0","@types/tap":"^15.0.0","desm":"^1.3.0","fastbench":"^1.0.1","husky":"^8.0.1","sonic-boom":"^3.0.0","standard":"^17.0.0","tap":"^16.2.0","ts-node":"^10.8.0","typescript":"^4.7.2","why-is-node-running":"^2.2.2"},"scripts":{"test":"standard && npm run transpile && tap test/*.test.*js && tap --ts test/*.test.*ts","test:ci":"standard && npm run transpile && npm run test:ci:js && npm run test:ci:ts","test:ci:js":"tap --no-check-coverage --coverage-report=lcovonly \\"test/**/*.test.*js\\"","test:ci:ts":"tap --ts --no-check-coverage --coverage-report=lcovonly \\"test/**/*.test.*ts\\"","test:yarn":"npm run transpile && tap \\"test/**/*.test.js\\" --no-check-coverage","transpile":"sh ./test/ts/transpile.sh","prepare":"husky install"},"standard":{"ignore":["test/ts/**/*"]},"repository":{"type":"git","url":"git+https://github.com/mcollina/thread-stream.git"},"keywords":["worker","thread","threads","stream"],"author":"Matteo Collina <hello@matteocollina.com>","license":"MIT","bugs":{"url":"https://github.com/mcollina/thread-stream/issues"},"homepage":"https://github.com/mcollina/thread-stream#readme"}');
 
 /***/ }),
 
@@ -19161,8 +33646,8 @@ module.exports = JSON.parse('[[[0,44],"disallowed_STD3_valid"],[[45,46],"valid"]
 /******/ 		}
 /******/ 		// Create a new module (and put it into the cache)
 /******/ 		var module = __webpack_module_cache__[moduleId] = {
-/******/ 			// no module.id needed
-/******/ 			// no module.loaded needed
+/******/ 			id: moduleId,
+/******/ 			loaded: false,
 /******/ 			exports: {}
 /******/ 		};
 /******/ 	
@@ -19175,11 +33660,23 @@ module.exports = JSON.parse('[[[0,44],"disallowed_STD3_valid"],[[45,46],"valid"]
 /******/ 			if(threw) delete __webpack_module_cache__[moduleId];
 /******/ 		}
 /******/ 	
+/******/ 		// Flag the module as loaded
+/******/ 		module.loaded = true;
+/******/ 	
 /******/ 		// Return the exports of the module
 /******/ 		return module.exports;
 /******/ 	}
 /******/ 	
 /************************************************************************/
+/******/ 	/* webpack/runtime/node module decorator */
+/******/ 	(() => {
+/******/ 		__nccwpck_require__.nmd = (module) => {
+/******/ 			module.paths = [];
+/******/ 			if (!module.children) module.children = [];
+/******/ 			return module;
+/******/ 		};
+/******/ 	})();
+/******/ 	
 /******/ 	/* webpack/runtime/compat */
 /******/ 	
 /******/ 	if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = __dirname + "/";

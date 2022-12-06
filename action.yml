@@ -15,8 +15,6 @@ inputs:
     description: Comma-separated list of tag names
   api-endpoint:
     description: Opvious API endpoint
-  hub-endpoint:
-    description: Opvious optimization hub endpoint
 runs:
   using: node16
   main: dist/index.js
