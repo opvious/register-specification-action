@@ -29,18 +29,13 @@ false.
 
 ### `api-endpoint`
 
-Opvious API endpoint. You should only need to set this if you are running a
-self-hosted Opvious cluster. Defaults to https://api.opvious.io.
-
-### `hub-endpoint`
-
-Optimization hub endpoint. You should only need to set this if you are running a
-self-hosted Opvious cluster. Defaults to https://hub.opvious.io.
+Opvious API endpoint. You should only need to set this if you are using a
+self-hosted Opvious cluster. Defaults to https://api.beta.opvious.io.
 
 ## Example usage
 
 ```yaml
-uses: opvious/register-specification-action@v0.1.1
+uses: opvious/register-specification-action@v0.1.3
 with:
   token: ${{ secrets.OPVIOUS_TOKEN }}
   sources: sources/*.md

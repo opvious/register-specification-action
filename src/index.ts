@@ -9,7 +9,6 @@ async function main(): Promise<void> {
   const client = OpviousClient.create({
     authorization: core.getInput('token', {required: true}),
     apiEndpoint: core.getInput('api-endpoint') || undefined,
-    hubEndpoint: core.getInput('hub-endpoint') || undefined,
   });
   const dryRun = core.getBooleanInput('dry-run');
   const tags = commaSeparated(core.getInput('tags'));

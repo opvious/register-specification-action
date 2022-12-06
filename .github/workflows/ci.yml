@@ -19,6 +19,8 @@ jobs:
           registry-url: https://npm.pkg.github.com
       - name: Install
         run: npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GPR_RO_TOKEN }}
       - name: Verify
         run: |
           npm run build
