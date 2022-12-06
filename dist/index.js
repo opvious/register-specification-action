@@ -22301,7 +22301,7 @@ class OpviousClient {
     }
     /** Creates a new client. */
     static create(opts) {
-        const tel = (opts?.telemetry ?? (0, stl_telemetry_1.noopTelemetry)()).via(common_1.packageInfo);
+        const tel = opts?.telemetry ?? (0, stl_telemetry_1.noopTelemetry)();
         const { logger } = tel;
         const auth = opts?.authorization ?? process.env.OPVIOUS_TOKEN;
         if (!auth) {
@@ -22316,7 +22316,6 @@ class OpviousClient {
             headers: {
                 'accept-encoding': 'br;q=1.0, gzip;q=0.5, *;q=0.1',
                 authorization: auth.includes(' ') ? auth : 'Bearer ' + auth,
-                'opvious-sdk': 'TypeScript v' + common_1.packageInfo.version,
             },
             async fetch(info, init) {
                 const { body } = init;
@@ -22625,7 +22624,7 @@ const COMPRESSION_THRESHOLD = 2 ** 16; // 64 kiB
 /***/ }),
 
 /***/ 2026:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+/***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
 
@@ -22646,15 +22645,8 @@ const COMPRESSION_THRESHOLD = 2 ** 16; // 64 kiB
  * the License.
  */
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.strippingTrailingSlashes = exports.assertNoErrors = exports.packageInfo = void 0;
-const stl_telemetry_1 = __nccwpck_require__(4782);
-exports.packageInfo = (0, stl_telemetry_1.enclosingPackageInfo)(__dirname);
-function assertNoErrors(res) {
-    if (res.errors?.length) {
-        throw new Error('API call failed: ' + JSON.stringify(res.errors, null, 2));
-    }
-}
-exports.assertNoErrors = assertNoErrors;
+exports.strippingTrailingSlashes = void 0;
+/** Returns the input string with any trailing slashes removed. */
 function strippingTrailingSlashes(arg) {
     return arg.replace(/\/+$/, '');
 }

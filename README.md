@@ -35,7 +35,7 @@ self-hosted Opvious cluster. Defaults to https://api.beta.opvious.io.
 ## Example usage
 
 ```yaml
-uses: opvious/register-specification-action@v0.1.3
+uses: opvious/register-specification-action@v0.1.5
 with:
   token: ${{ secrets.OPVIOUS_TOKEN }}
   sources: sources/*.md
