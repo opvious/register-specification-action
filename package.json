@@ -1,6 +1,6 @@
 {
   "name": "register-specification-action",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "repository": "github:opvious/register-specification-action",
   "description": "GitHub action for creating optimization models",
   "homepage": "https://github.com/opvious/register-specification-action",
