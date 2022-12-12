@@ -8,7 +8,7 @@ controlled sources.
 ### `token`
 
 **Required** Opvious API access token. You can create one here:
-https://hub.opvious.io/authorizations.
+https://hub.beta.opvious.io/authorizations.
 
 ### `sources`
 
@@ -35,7 +35,7 @@ self-hosted Opvious cluster. Defaults to https://api.beta.opvious.io.
 ## Example usage
 
 ```yaml
-uses: opvious/register-specification-action@v0.1.5
+uses: opvious/register-specification-action@beta
 with:
   token: ${{ secrets.OPVIOUS_TOKEN }}
   sources: sources/*.md
