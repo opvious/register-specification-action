@@ -8,7 +8,7 @@ import {OpviousClient} from 'opvious';
 async function main(): Promise<void> {
   const client = OpviousClient.create({
     authorization: core.getInput('token', {required: true}),
-    apiEndpoint: core.getInput('api-endpoint') || undefined,
+    domain: core.getInput('domain') || undefined,
   });
   const dryRun = core.getBooleanInput('dry-run');
   const tags = commaSeparated(core.getInput('tags'));
@@ -31,7 +31,8 @@ async function main(): Promise<void> {
         description: src,
         tagNames: tags,
       });
-      console.log(`Registered ${srcPath}. [revno=${spec.revno}]`);
+      const url = client.specificationUrl(name, spec.revno);
+      console.log(`Registered ${srcPath}: ${url} [revno=${spec.revno}]`);
     }
   }
 }

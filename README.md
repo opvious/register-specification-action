@@ -27,10 +27,10 @@ version-specific tags for easier tracking.
 If true, specifications will only be validated (and not registered). Defaults to
 false.
 
-### `api-endpoint`
+### `domain`
 
-Opvious API endpoint. You should only need to set this if you are using a
-self-hosted Opvious cluster. Defaults to https://api.beta.opvious.io.
+Opvious platform domain. You should only need to set this if you are using a
+self-hosted cluster. Defaults to the default production endpoint.
 
 ## Example usage
 
@@ -40,3 +40,6 @@ with:
   token: ${{ secrets.OPVIOUS_TOKEN }}
   sources: sources/*.md
 ```
+See the [guide][] for more examples.
+
+[guide]: https://docs.opvious.io/guides/integrations/github-actions#register-specification-action

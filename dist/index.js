@@ -22182,10 +22182,13 @@ _a = (0, stl_errors_1.errorFactories)({
             message: 'API response included errors: ' + errs.map(formatError).join(', '),
             tags: { errors: errs },
         }),
-        unparseableSource: (snippets) => ({
-            message: `Encountered ${snippets.length} error(s) while parsing source:\n\n` +
-                snippets.map((s) => s.preview).join('\n'),
-            tags: { snippets },
+        attemptCancelled: (uuid) => ({
+            message: 'Attempt was cancelled',
+            tags: { uuid },
+        }),
+        attemptErrored: (uuid, failure) => ({
+            message: `Attempt errored: ${(0, stl_errors_1.errorMessage)(failure)}`,
+            tags: { uuid, failure },
         }),
         missingAuthorization: 'No authorization found',
         unknownAttempt: (uuid) => ({
@@ -22196,6 +22199,11 @@ _a = (0, stl_errors_1.errorFactories)({
             message: `Formulation ${formulation} ${tag ? ` (${tag})` : ''}` +
                 'was not found',
             tags: { formulation, tag },
+        }),
+        unparseableSource: (snippets) => ({
+            message: `Encountered ${snippets.length} error(s) while parsing source:\n\n` +
+                snippets.map((s) => s.preview).join('\n'),
+            tags: { snippets },
         }),
     },
 }), exports.clientErrors = _a[0], exports.clientErrorCodes = _a[1];
@@ -22278,7 +22286,6 @@ const api = __importStar(__nccwpck_require__(8658));
 const stl_errors_1 = __nccwpck_require__(1553);
 const stl_telemetry_1 = __nccwpck_require__(4782);
 const backoff_1 = __importDefault(__nccwpck_require__(3086));
-const events_1 = __importDefault(__nccwpck_require__(2361));
 const graphql_request_1 = __nccwpck_require__(2476);
 const node_fetch_1 = __importStar(__nccwpck_require__(467));
 const tiny_typed_emitter_1 = __nccwpck_require__(3834);
@@ -22307,7 +22314,7 @@ class OpviousClient {
         if (!auth) {
             throw common_2.clientErrors.missingAuthorization();
         }
-        const domain = opts?.domain;
+        const domain = opts?.domain ?? process.env.OPVIOUS_DOMAIN;
         const apiEndpoint = (0, common_1.strippingTrailingSlashes)(opts?.apiEndpoint
             ? '' + opts.apiEndpoint
             : process.env.OPVIOUS_API_ENDPOINT ?? defaultEndpoint('api', domain));
@@ -22379,7 +22386,7 @@ class OpviousClient {
         logger.debug('Created new client.');
         return new OpviousClient(tel, apiEndpoint, hubEndpoint, sdk);
     }
-    /** Fetch currently active member. */
+    /** Fetches the currently active member. */
     async fetchMember() {
         const res = await this.sdk.FetchMember();
         return (0, common_2.resultData)(res).me;
@@ -22523,16 +22530,27 @@ class OpviousClient {
                         xb.backoff();
                         return;
                     }
+                    case 'CANCELLED':
+                        throw common_2.clientErrors.attemptCancelled(uuid);
+                    case 'ERRORED': {
+                        (0, stl_errors_1.assert)(attempt.outcome?.__typename === 'FailedOutcome', 'Unexpected outcome %j', attempt.outcome);
+                        throw common_2.clientErrors.attemptErrored(uuid, attempt.outcome.failure);
+                    }
                     case 'INFEASIBLE':
-                        throw new Error('Infeasible attempt');
+                        ee.emit('infeasible');
+                        return;
                     case 'UNBOUNDED':
-                        throw new Error('Unbounded attempt');
+                        ee.emit('unbounded');
+                        return;
+                    case 'FEASIBLE':
+                    case 'OPTIMAL': {
+                        (0, stl_errors_1.assert)(attempt.outcome?.__typename === 'FeasibleOutcome', 'Unexpected outcome %j', attempt.outcome);
+                        ee.emit('feasible', attempt.outcome);
+                        return;
+                    }
+                    default:
+                        stl_errors_1.errors.absurd(attempt.status);
                 }
-                const outcome = stl_errors_1.check.isPresent(attempt.outcome);
-                if (outcome.__typename === 'FailedOutcome') {
-                    throw new Error(outcome.failure.message);
-                }
-                ee.emit('outcome', outcome);
             })
                 .catch((err) => {
                 ee.emit('error', err);
@@ -22542,12 +22560,21 @@ class OpviousClient {
     }
     /**
      * Convenience method which resolves when the attempt is solved. Consider
-     * using `trackAttempt` to get access to progress notifications.
+     * using `trackAttempt` to get access to progress notifications and other
+     * statuses.
      */
-    async waitForOutcome(uuid) {
-        const ee = this.trackAttempt(uuid);
-        const [outcome] = await events_1.default.once(ee, 'outcome');
-        return outcome;
+    async waitForFeasibleOutcome(uuid) {
+        return new Promise((ok, fail) => {
+            this.trackAttempt(uuid)
+                .on('error', fail)
+                .on('feasible', ok)
+                .on('infeasible', () => {
+                fail(new Error('Infeasible problem'));
+            })
+                .on('unbounded', () => {
+                fail(new Error('Unbounded problem'));
+            });
+        });
     }
     /** Cancels a pending attempt. */
     async cancelAttempt(uuid) {
@@ -30389,7 +30416,7 @@ const opvious_1 = __nccwpck_require__(3855);
 async function main() {
     const client = opvious_1.OpviousClient.create({
         authorization: core.getInput('token', { required: true }),
-        apiEndpoint: core.getInput('api-endpoint') || undefined,
+        domain: core.getInput('domain') || undefined,
     });
     const dryRun = core.getBooleanInput('dry-run');
     const tags = commaSeparated(core.getInput('tags'));
@@ -30411,7 +30438,8 @@ async function main() {
                 description: src,
                 tagNames: tags,
             });
-            console.log(`Registered ${srcPath}. [revno=${spec.revno}]`);
+            const url = client.specificationUrl(name, spec.revno);
+            console.log(`Registered ${srcPath}: ${url} [revno=${spec.revno}]`);
         }
     }
 }
