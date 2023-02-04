@@ -40,6 +40,7 @@ with:
   token: ${{ secrets.OPVIOUS_TOKEN }}
   sources: sources/*.md
 ```
+
 See the [guide][] for more examples.
 
 [guide]: https://docs.opvious.io/guides/integrations/github-actions#register-specification-action

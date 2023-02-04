@@ -16,24 +16,34 @@ async function main(): Promise<void> {
   const srcGlob = core.getInput('sources', {required: true});
   const globber = await glob.create(srcGlob);
 
+  let valid = true;
   for await (const srcPath of globber.globGenerator()) {
     console.log(`Processing ${srcPath}...`);
     const src = await readFile(srcPath, 'utf8');
     const {name} = path.parse(srcPath);
-    const defs = await client.extractDefinitions(src);
     if (dryRun) {
-      await client.validateDefinitions(defs);
-      console.log(`Validated ${srcPath}.`);
+      const {errors} = await client.parseSources(src);
+      if (errors.length) {
+        valid = false;
+        console.error(
+          `Source ${srcPath} is invalid: ${JSON.stringify(errors, null, 2)}`
+        );
+      } else {
+        console.log(`Source ${srcPath} is valid.`);
+      }
     } else {
       const spec = await client.registerSpecification({
         formulationName: name,
-        definitions: defs,
+        sources: [src],
         description: src,
         tagNames: tags,
       });
       const url = client.specificationUrl(name, spec.revno);
       console.log(`Registered ${srcPath}: ${url} [revno=${spec.revno}]`);
     }
+  }
+  if (!valid) {
+    throw new Error('At least one source was invalid');
   }
 }
 
