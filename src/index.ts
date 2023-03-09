@@ -22,7 +22,7 @@ async function main(): Promise<void> {
     const src = await readFile(srcPath, 'utf8');
     const {name} = path.parse(srcPath);
     if (dryRun) {
-      const {errors} = await client.parseSources(src);
+      const {errors} = await client.parseSources({sources: [src]});
       if (errors.length) {
         valid = false;
         console.error(
