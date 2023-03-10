@@ -13,8 +13,8 @@ inputs:
     default: false
   tags:
     description: Comma-separated list of tag names
-  api-endpoint:
-    description: Opvious API endpoint
+  domain:
+    description: Opvious API domain
 runs:
   using: node16
   main: dist/index.js
