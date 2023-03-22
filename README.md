@@ -12,15 +12,52 @@ https://hub.beta.opvious.io/authorizations.
 
 ### `sources`
 
-**Required** Glob of source paths. The name of the formulation will be assumed
-equal to the name of the source file, for example `sources/shift-scheduling.md`
-would be registed as `shift-scheduling`.
+**Required** Specification sources. This can either be a single string glob or a
+YAML list of objects (see below).
+
+When a single glob is passed in, each matched file will be considered a
+self-contained specification. The name of the formulation will be derived from
+the file's name by stripping the extension. The specification's description will
+be set to the file's contents.
+
+When a list of objects are passed in, each is expected to describe a single
+specification and should contain the following fields:
+
+* `name` (required), the name of the formulation
+* `sources` (required), glob of source files
+* `description` (optional), path of file to use as description
+
+Examples:
+
+```yaml
+  # Single glob
+  sources: sources/*.md
+
+  # Multiple specifications
+  sources: |
+    - name: first-formulation
+      sources: sources/first.md
+    - name: second-formulation
+      sources: sources/second/*.md
+      description: sources/second/README.md
+```
 
 ### `tags`
 
-Comma-separated list of tags to apply to the created specification. By default
-only the `latest` tag is applied. This can be useful to add a `ci` tag or
-version-specific tags for easier tracking.
+Tag name(s) to apply to registered formulations. Multiple tags can be expressed
+via a YAML list. Unused in dry-run mode.
+
+Examples:
+
+```yaml
+  # Single tag
+  tags: golden
+
+  # Multiple tags
+  tags: |
+    - golden
+    - github
+```
 
 ### `dry-run`
 
