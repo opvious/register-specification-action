@@ -144,16 +144,17 @@ class Runner {
     tagNames: ReadonlyArray<string>
   ): Runner {
     return new Runner(async (args) => {
+      const {name, sources} = args;
       const description = args.description
         ? await readFile(args.description, 'utf8')
         : undefined;
       const spec = await client.registerSpecification({
-        formulationName: args.name,
-        sources: args.sources,
+        formulationName: name,
+        sources,
         description,
         tagNames,
       });
-      const url = client.specificationUrl(args.name, spec.revno);
+      const url = client.specificationUrl(name, spec.revno);
       console.log(
         `Registered sources for '${name}': ${url} [revno=${spec.revno}]`
       );
