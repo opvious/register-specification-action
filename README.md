@@ -25,7 +25,8 @@ specification and should contain the following fields:
 
 * `name` (required), the name of the formulation
 * `sources` (required), glob of source files
-* `description` (optional), path of file to use as description
+* `description` (optional), path of file to use as description, defaults to the
+  concatenated contents of all source files
 
 Examples:
 

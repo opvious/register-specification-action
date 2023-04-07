@@ -28976,7 +28976,7 @@ async function main() {
         for await (const srcPath of globber.globGenerator()) {
             const src = await (0, promises_1.readFile)(srcPath, 'utf8');
             const { name } = path_1.default.parse(srcPath);
-            await runner.run({ name, sources: [src], description: src });
+            await runner.run({ name, sources: [src] });
         }
     }
     else {
@@ -29057,7 +29057,7 @@ class Runner {
             const { name, sources } = args;
             const description = args.description
                 ? await (0, promises_1.readFile)(args.description, 'utf8')
-                : undefined;
+                : sources.join('\n\n');
             const spec = await client.registerSpecification({
                 formulationName: name,
                 sources,
