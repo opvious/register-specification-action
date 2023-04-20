@@ -1,11 +1,13 @@
 import * as core from '@actions/core';
 import * as glob from '@actions/glob';
 import * as github from '@actions/github';
-import Ajv, {JSONSchemaType, ValidateFunction} from "ajv"
-import {readFile} from 'fs/promises';
-import path from 'path';
+import {default as Ajv_, JSONSchemaType, ValidateFunction} from 'ajv';
+import {readFile} from 'node:fs/promises';
+import path from 'node:path';
 import {OpviousClient} from 'opvious';
 import YAML from 'yaml';
+
+const Ajv = Ajv_.default ?? Ajv_;
 
 async function main(): Promise<void> {
   const client = OpviousClient.create({
@@ -52,7 +54,11 @@ function parseTags(): ReadonlyArray<string> {
 }
 
 function parseSources(): Sources {
-  return parseInput({name: 'sources', validate: validateSources, required: true});
+  return parseInput({
+    name: 'sources',
+    validate: validateSources,
+    required: true,
+  });
 }
 
 const ajv = new Ajv();
@@ -156,7 +162,8 @@ class Runner {
       });
       const url = client.specificationUrl(name, spec.revno);
       console.log(
-        `Registered sources for '${name}': ${url} [revno=${spec.revno}]`
+        `Registered sources for '${name}': ${url} [revno=${spec.revno}, ` +
+          `tags={${tagNames.join(',')}}]`
       );
     });
   }
