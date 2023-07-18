@@ -3,6 +3,9 @@
 This action validates and creates optimization model formulations from version
 controlled sources.
 
+_**Deprecation notice**: This action is deprecated in favor of using the
+[CLI][cli] or the [Python SDK][python-sdk]'s entry point directly._
+
 ## Inputs
 
 ### `token`
@@ -82,3 +85,5 @@ with:
 See the [guide][] for more examples.
 
 [guide]: https://docs.opvious.io/guides/integrations/github-actions#register-specification-action
+[cli]: https://www.npmjs.com/package/opvious-cli
+[python-sdk]: https://pypi.org/project/opvious/
